@@ -1,0 +1,123 @@
+/* ===== HEADER ===== */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  padding: 12px 32px;
+  width: 100%;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.02);
+}
+
+@media (max-width: 640px) {
+  .header {
+    padding: 10px 16px;
+  }
+}
+
+/* ===== ЛОГОТИП ===== */
+.header-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.header-logo-svg {
+  width: 34px;
+  height: 34px;
+  color: var(--brand);
+  flex-shrink: 0;
+  transition: transform var(--transition-fast);
+}
+
+.header-logo-svg:hover {
+  transform: scale(1.05);
+}
+
+.header-title {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.header-title .pifpaf {
+  font-size: 24px;
+  font-weight: 700;
+  font-style: italic;
+  color: var(--ink-900);
+  letter-spacing: -0.02em;
+}
+
+.header-title .ai {
+  font-size: 24px;
+  font-weight: 700;
+  font-style: normal;
+  color: #3479ff;
+  letter-spacing: -0.02em;
+}
+
+@media (max-width: 640px) {
+  .header-title .pifpaf,
+  .header-title .ai {
+    font-size: 20px;
+  }
+}
+
+/* ===== ПРОФИЛЬ СПРАВА ===== */
+.header-profile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  position: relative;
+}
+
+.header-profile::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--brand);
+  opacity: 0;
+  transform: scale(0.8);
+  transition: all var(--transition-base);
+}
+
+.header-profile:hover::after {
+  opacity: 0.06;
+  transform: scale(1);
+}
+
+.header-profile:hover {
+  background: rgba(59, 94, 255, 0.06);
+}
+
+.header-profile .profile-icon {
+  width: 26px;
+  height: 26px;
+  color: var(--brand);
+  transition: transform var(--transition-fast);
+  position: relative;
+  z-index: 1;
+}
+
+.header-profile:hover .profile-icon {
+  transform: scale(1.08);
+}
+
+.header-profile:active .profile-icon {
+  transform: scale(0.92);
+}

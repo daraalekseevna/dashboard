@@ -1,0 +1,153 @@
+/* ===== FOOTER ===== */
+.footer {
+  margin-top: 80px;
+  padding: 48px 0 28px;
+  background: var(--white);
+  border-top: 1px solid var(--ink-100);
+}
+
+.footer-inner {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.footer-top {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 28px;
+}
+
+.footer-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.footer-brand .pf {
+  font-style: italic;
+  color: var(--ink-900);
+}
+
+.footer-brand .ai {
+  font-style: normal;
+  color: #3479ff;
+}
+
+.footer-brand .dash {
+  color: var(--ink-300);
+  font-weight: 300;
+}
+
+.footer-brand .tagline {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--ink-300);
+}
+
+/* ===== ССЫЛКИ ===== */
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px 28px;
+  padding: 18px 0 22px;
+  border-top: 1px solid var(--ink-100);
+  border-bottom: 1px solid var(--ink-100);
+  margin-bottom: 24px;
+}
+
+.footer-links a {
+  font-size: 14px;
+  color: var(--ink-500);
+  text-decoration: none;
+  transition: all var(--transition-fast);
+  position: relative;
+}
+
+.footer-links a::after {
+  content: "";
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 1.5px;
+  background: var(--brand-gradient);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.footer-links a:hover {
+  color: var(--brand);
+}
+
+.footer-links a:hover::after {
+  opacity: 1;
+}
+
+/* ===== НИЖНЯЯ ЧАСТЬ ===== */
+.footer-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-300);
+}
+
+.footer-legal {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.footer-copy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.footer-bottom .divider {
+  color: var(--ink-200);
+}
+
+@media (max-width: 640px) {
+  .footer {
+    padding: 32px 0 16px;
+    margin-top: 48px;
+  }
+
+  .footer-inner {
+    padding: 0 16px;
+  }
+
+  .footer-brand {
+    font-size: 18px;
+  }
+
+  .footer-brand .tagline {
+    font-size: 12px;
+  }
+
+  .footer-links {
+    gap: 8px 18px;
+  }
+
+  .footer-links a {
+    font-size: 13px;
+  }
+
+  .footer-bottom {
+    font-size: 11px;
+    text-align: center;
+  }
+
+  .footer-legal,
+  .footer-copy {
+    justify-content: center;
+  }
+}
