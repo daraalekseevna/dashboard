@@ -163,6 +163,88 @@ async function checkAccountPrivacy(username) {
   }
 }
 
+// ===== ИСПРАВЛЕННАЯ ФУНКЦИЯ ПОЛУЧЕНИЯ ПОСТОВ =====
+async function getInstagramPosts(username, limit = 30) {
+  let allPosts = [];
+  let usedActor = null;
+  
+  // Пробуем разные акторы с правильными параметрами
+  const actors = [
+    // 1. Instagram Post Scraper (правильный формат)
+    {
+      name: 'apify/instagram-post-scraper',
+      call: async () => {
+        const run = await apifyClient.actor('apify/instagram-post-scraper').call({
+          username: username,  // singular, не usernames!
+          resultsLimit: limit,
+        });
+        const { items } = await apifyClient.dataset(run.defaultDatasetId).listItems();
+        return items;
+      }
+    },
+    // 2. Instagram Scraper
+    {
+      name: 'apify/instagram-scraper',
+      call: async () => {
+        const run = await apifyClient.actor('apify/instagram-scraper').call({
+          usernames: [username],
+          resultsLimit: limit,
+        });
+        const { items } = await apifyClient.dataset(run.defaultDatasetId).listItems();
+        return items;
+      }
+    },
+    // 3. Instagram Profile Scraper (тоже может давать посты)
+    {
+      name: 'apify/instagram-profile-scraper',
+      call: async () => {
+        const run = await apifyClient.actor('apify/instagram-profile-scraper').call({
+          usernames: [username],
+          resultsLimit: limit,
+        });
+        const { items } = await apifyClient.dataset(run.defaultDatasetId).listItems();
+        return items;
+      }
+    },
+    // 4. Альтернативный актор
+    {
+      name: 'lukas/instagram-scraper',
+      call: async () => {
+        const run = await apifyClient.actor('lukas/instagram-scraper').call({
+          usernames: [username],
+          resultsLimit: limit,
+        });
+        const { items } = await apifyClient.dataset(run.defaultDatasetId).listItems();
+        return items;
+      }
+    }
+  ];
+
+  for (const actor of actors) {
+    try {
+      console.log(`🔄 Пробуем ${actor.name}...`);
+      const items = await actor.call();
+      if (items && items.length > 0) {
+        // Проверяем, что это не ошибка
+        if (items[0].error) {
+          console.log(`⚠️ ${actor.name} вернул ошибку:`, items[0].errorDescription || items[0].error);
+          continue;
+        }
+        allPosts = items;
+        usedActor = actor.name;
+        console.log(`✅ ${actor.name} вернул ${items.length} постов`);
+        break;
+      } else {
+        console.log(`⚠️ ${actor.name} вернул 0 постов`);
+      }
+    } catch (err) {
+      console.log(`❌ ${actor.name} не сработал:`, err.message);
+    }
+  }
+
+  return { posts: allPosts, usedActor };
+}
+
 // ===== УЛУЧШЕННАЯ ФУНКЦИЯ ИЗВЛЕЧЕНИЯ ДАННЫХ =====
 function extractVideoData(post) {
   // ===== 1. ИЗВЛЕКАЕМ ОБЛОЖКУ =====
@@ -195,6 +277,7 @@ function extractVideoData(post) {
     post.poster_url,
     post.thumbnail_src,
     post.src,
+    post.url,
     // Для карусели
     post.carousel_media?.[0]?.image_versions2?.candidates?.[0]?.url,
     post.carousel_media?.[0]?.images?.standard_resolution?.url,
@@ -299,12 +382,14 @@ function extractVideoData(post) {
     post.likesCount || 
     post.like_count || 
     post.likes || 
+    post.edge_media_preview_like?.count ||
     0;
 
   const comments = 
     post.commentsCount || 
     post.comment_count || 
     post.comments || 
+    post.edge_media_to_comment?.count ||
     0;
 
   // ===== 6. ПРОВЕРЯЕМ, ЧТО ЭТО ВИДЕО =====
@@ -331,7 +416,10 @@ function extractVideoData(post) {
     hasCaption: !!caption,
     caption: caption ? caption.substring(0, 50) + '...' : '❌',
     date: timestamp.toISOString().split('T')[0],
-    isVideo
+    isVideo,
+    views,
+    likes,
+    comments
   });
 
   return {
@@ -348,7 +436,7 @@ function extractVideoData(post) {
   };
 }
 
-function generateMockReels(username, count = 12) {
+function generateMockReels(username, count = 8) {
   const captions = [
     '🔥 Новый рилс! #instagram #reels',
     '💪 Мотивация на каждый день',
@@ -359,9 +447,7 @@ function generateMockReels(username, count = 12) {
     '💫 Вдохновение вокруг нас',
     '🌟 Свет и тени',
     '🎶 Музыка в душе',
-    '📸 Момент из жизни',
-    '❤️ Любовь и страсть',
-    '🌊 Волна эмоций'
+    '📸 Момент из жизни'
   ];
   
   return Array.from({ length: count }, (_, i) => ({
@@ -427,50 +513,37 @@ app.post('/api/sync/:username', async (req, res) => {
 
     let posts = [];
     let isMockData = false;
+    let usedActor = null;
 
     if (isPrivate) {
       console.log('🔒 Аккаунт приватный, генерируем демо-данные...');
-      posts = generateMockReels(username, 12);
+      posts = generateMockReels(username, 8);
       isMockData = true;
     } else {
       console.log('🌐 Аккаунт публичный, получаем посты...');
       
-      try {
-        // Пробуем получить посты через instagram-post-scraper
-        console.log('🔄 Пробуем instagram-post-scraper...');
-        const postsRun = await apifyClient.actor('apify/instagram-post-scraper').call({
-          usernames: [username],
-          resultsLimit: 30,
-          resultsType: 'posts',
-        });
+      const { posts: fetchedPosts, usedActor: actor } = await getInstagramPosts(username, 30);
+      
+      if (fetchedPosts && fetchedPosts.length > 0) {
+        usedActor = actor;
+        console.log(`📹 Получено ${fetchedPosts.length} постов через ${actor}`);
         
-        const { items } = await apifyClient.dataset(postsRun.defaultDatasetId).listItems();
+        // Извлекаем данные из каждого поста
+        const extractedPosts = fetchedPosts.map(post => extractVideoData(post));
         
-        if (items && items.length > 0) {
-          console.log(`📹 Получено ${items.length} постов`);
-          
-          // Извлекаем данные из каждого поста
-          const extractedPosts = items.map(post => extractVideoData(post));
-          
-          // Фильтруем только видео
-          const videoPosts = extractedPosts.filter(p => p.isVideo);
-          console.log(`🎥 Найдено ${videoPosts.length} видео из ${extractedPosts.length} постов`);
-          
-          if (videoPosts.length > 0) {
-            posts = videoPosts;
-          } else {
-            console.log('⚠️ Видео не найдены, генерируем демо-данные...');
-            posts = generateMockReels(username, 8);
-            isMockData = true;
-          }
+        // Фильтруем только видео
+        const videoPosts = extractedPosts.filter(p => p.isVideo);
+        console.log(`🎥 Найдено ${videoPosts.length} видео из ${extractedPosts.length} постов`);
+        
+        if (videoPosts.length > 0) {
+          posts = videoPosts;
         } else {
-          console.log('⚠️ Постов не получено, генерируем демо-данные...');
+          console.log('⚠️ Видео не найдены, генерируем демо-данные...');
           posts = generateMockReels(username, 8);
           isMockData = true;
         }
-      } catch (err) {
-        console.log('❌ Ошибка получения постов:', err.message);
-        console.log('🔄 Генерируем демо-данные...');
+      } else {
+        console.log('⚠️ Постов не получено, генерируем демо-данные...');
         posts = generateMockReels(username, 8);
         isMockData = true;
       }
@@ -504,7 +577,7 @@ app.post('/api/sync/:username', async (req, res) => {
       synced++;
     }
 
-    console.log(`✅ Синхронизировано: ${synced} постов${isMockData ? ' (демо-данные)' : ''}`);
+    console.log(`✅ Синхронизировано: ${synced} постов${isMockData ? ' (демо-данные)' : ''}${usedActor ? ` через ${usedActor}` : ''}`);
 
     const reelsData = await pool.query(
       `SELECT 
@@ -525,6 +598,7 @@ app.post('/api/sync/:username', async (req, res) => {
       synced,
       isPrivate,
       isMockData,
+      usedActor,
       user: {
         username: profile.username || username,
         fullName: profile.fullName || profile.username || username,
