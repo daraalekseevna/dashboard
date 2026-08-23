@@ -160,7 +160,7 @@ export default function BloggerProfile() {
                 .sort((a, b) => {
                   const dateA = new Date(a.timestamp);
                   const dateB = new Date(b.timestamp);
-                  return dateA - dateB; // старые сверху (20), новые снизу (1)
+                  return dateA - dateB;
                 })
                 .map((reel) => (
                   <div key={reel.id} className="reel-card">

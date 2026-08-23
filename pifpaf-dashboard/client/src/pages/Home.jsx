@@ -5,7 +5,7 @@ import Header from "../components/Header";
 import Footer from "../components/Footer";
 import { 
   FiEye, FiHeart, FiMessageCircle, FiUser, 
-  FiVideo, FiPlus 
+  FiVideo, FiPlus, FiCalendar
 } from "react-icons/fi";
 
 export default function Home() {
@@ -176,6 +176,19 @@ export default function Home() {
     return num.toString();
   };
 
+  const formatDate = (d) => {
+    if (!d) return "Дата неизвестна";
+    try {
+      return new Date(d).toLocaleDateString("ru-RU", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
+    } catch {
+      return "Дата неизвестна";
+    }
+  };
+
   const grouped = reels.reduce((acc, reel) => {
     const key = reel.instagram_username;
     if (!acc[key]) acc[key] = [];
@@ -292,6 +305,9 @@ export default function Home() {
                     <div className="user-avatar">{name[0].toUpperCase()}</div>
                     <span className="user-name">@{name}</span>
                     <span className="user-count">
+                      <FiUser size={12} /> {formatViews(items[0]?.followers || 0)}
+                    </span>
+                    <span className="user-count">
                       <FiVideo size={12} /> {items.length}
                     </span>
                     <Link to={`/blogger/${name}`} className="profile-btn">
@@ -341,7 +357,7 @@ export default function Home() {
                               {caption.slice(0, 60)}
                             </p>
                             <p className="reel-meta">
-                              <FiMessageCircle size={12} /> {comments}
+                              <FiCalendar size={12} /> {formatDate(reel.timestamp)} • <FiMessageCircle size={12} /> {comments}
                             </p>
                           </div>
                         </div>

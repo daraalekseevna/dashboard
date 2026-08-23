@@ -71,7 +71,6 @@ app.post('/api/sync/:username', async (req, res) => {
   console.log(`🔍 Синхронизация: ${username}`);
 
   try {
-    // ===== 1. ПОЛУЧАЕМ ПРОФИЛЬ =====
     console.log('📡 Получаем профиль через Apify...');
     const profileRun = await apifyClient.actor('apify/instagram-profile-scraper').call({
       usernames: [username],
@@ -85,7 +84,6 @@ app.post('/api/sync/:username', async (req, res) => {
 
     console.log(`✅ Найден профиль: ${profile.username}, подписчиков: ${profile.followers || 0}`);
 
-    // Сохраняем пользователя
     let userResult = await pool.query(
       `SELECT id FROM users WHERE instagram_username = $1`,
       [username]
@@ -112,22 +110,19 @@ app.post('/api/sync/:username', async (req, res) => {
       );
     }
 
-    // ===== 2. ПОЛУЧАЕМ РИЛСЫ =====
     console.log('📡 Получаем рилсы через api-ninja/instagram-scraper...');
     const reelsRun = await apifyClient.actor('api-ninja/instagram-scraper').call({
       urls: [`https://www.instagram.com/${username}/reels/`],
-      resultsLimit: 9000,
+      resultsLimit: 9999,
     });
     const { items: reelsItems } = await apifyClient.dataset(reelsRun.defaultDatasetId).listItems();
 
-    // ===== СОРТИРУЕМ ПО ДАТЕ (НОВЫЕ СВЕРХУ) =====
     reelsItems.sort((a, b) => {
       const dateA = a.taken_at_timestamp || a.timestamp || a.createdAt || a.date || 0;
       const dateB = b.taken_at_timestamp || b.timestamp || b.createdAt || b.date || 0;
       return new Date(dateB) - new Date(dateA);
     });
 
-    // Удаляем старые рилсы
     await pool.query(`DELETE FROM reels WHERE user_id = $1`, [userId]);
 
     let synced = 0;
@@ -135,14 +130,12 @@ app.post('/api/sync/:username', async (req, res) => {
       for (const reel of reelsItems) {
         if (!reel.id) continue;
 
-        // ===== ПРОСМОТРЫ — ИЩЕМ ВО ВСЕХ ПОЛЯХ =====
         const views = reel.play_count || reel.playCount || reel.video_play_count || reel.view_count || reel.views || 0;
         const likes = reel.likeCount || reel.like_count || reel.likes || 0;
         const comments = reel.commentCount || reel.comment_count || reel.comments || 0;
         const videoUrl = reel.videoUrl || reel.video_url || reel.displayUrl || reel.media_url || '';
         const thumbnail = reel.thumbnailUrl || reel.thumbnail_url || reel.thumbnail || '';
         
-        // ===== CAPTION =====
         let caption = '';
         if (reel.caption) {
           if (typeof reel.caption === 'string') caption = reel.caption;
@@ -157,7 +150,6 @@ app.post('/api/sync/:username', async (req, res) => {
         }
         const captionText = typeof caption === 'string' ? caption.slice(0, 500) : String(caption).slice(0, 500);
         
-        // ===== ДАТА =====
         let timestamp = new Date();
         if (reel.taken_at_timestamp) {
           timestamp = new Date(reel.taken_at_timestamp * 1000);
