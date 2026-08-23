@@ -169,7 +169,7 @@ export default function BloggerProfile() {
 
       <div className="home-container">
         <Link to="/" className="back-link">
-          <FiArrowLeft size={18} /> Назад к дашборду
+          <FiArrowLeft size={18} /> Назад
         </Link>
 
         {user && (
