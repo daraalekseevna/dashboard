@@ -20,6 +20,16 @@ export default function BloggerProfile() {
 
   const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
+  // Функция для получения изображения через прокси
+  const getProxiedImage = (url) => {
+    if (!url) return null;
+    // Если это Instagram URL, используем прокси
+    if (url.includes('cdninstagram.com') || url.includes('instagram.com')) {
+      return `${API}/proxy-image?url=${encodeURIComponent(url)}`;
+    }
+    return url;
+  };
+
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
@@ -27,15 +37,12 @@ export default function BloggerProfile() {
       setAvatarError(false);
       
       try {
-        // Получаем все рилсы
         const reelsRes = await axios.get(API + "/reels");
         const allReels = reelsRes.data;
         
-        // Фильтруем по username
         const userReels = allReels.filter(r => r.instagram_username === username);
         setReels(userReels);
         
-        // Получаем данные пользователя
         let userData = null;
         
         if (userReels.length > 0) {
@@ -46,7 +53,6 @@ export default function BloggerProfile() {
             is_private: userReels[0].is_private || false,
           };
         } else {
-          // Если рилсов нет, пробуем получить пользователя из списка
           try {
             const usersRes = await axios.get(API + "/users");
             const foundUser = usersRes.data.find(u => u.instagram_username === username);
@@ -68,7 +74,6 @@ export default function BloggerProfile() {
           setIsPrivate(userData.is_private || false);
         }
         
-        // Считаем статистику
         if (userReels.length > 0) {
           const totalViews = userReels.reduce((sum, r) => sum + (r.view_count || 0), 0);
           const totalLikes = userReels.reduce((sum, r) => sum + (r.like_count || 0), 0);
@@ -117,11 +122,9 @@ export default function BloggerProfile() {
     img.src = `https://picsum.photos/seed/${id}/300/534`;
   };
 
-  // Обработчик ошибки загрузки аватара
   const handleAvatarError = (e) => {
     setAvatarError(true);
     e.target.style.display = 'none';
-    // Показываем букву
     const parent = e.target.parentElement;
     const span = parent.querySelector('span');
     if (span) {
@@ -176,10 +179,11 @@ export default function BloggerProfile() {
               <div className="profile-avatar-large">
                 {user.profile_pic && !avatarError ? (
                   <img 
-                    src={user.profile_pic} 
+                    src={getProxiedImage(user.profile_pic)} 
                     alt={user.username}
                     onError={handleAvatarError}
                     loading="lazy"
+                    crossOrigin="anonymous"
                   />
                 ) : null}
                 <span style={{ display: (user.profile_pic && !avatarError) ? 'none' : 'flex' }}>
@@ -254,7 +258,7 @@ export default function BloggerProfile() {
                 .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
                 .map((reel) => {
                   const hasThumbnail = reel.thumbnail_url && reel.thumbnail_url.length > 0;
-                  const imageUrl = hasThumbnail ? reel.thumbnail_url : getPlaceholder(reel.id);
+                  const imageUrl = hasThumbnail ? getProxiedImage(reel.thumbnail_url) : getPlaceholder(reel.id);
                   
                   return (
                     <div key={reel.id} className="reel-card">
@@ -265,6 +269,7 @@ export default function BloggerProfile() {
                           data-id={reel.id}
                           onError={handleImageError}
                           loading="lazy"
+                          crossOrigin="anonymous"
                         />
                         <div className="reel-overlay">
                           <span>

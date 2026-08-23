@@ -19,6 +19,15 @@ export default function Home() {
 
   const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
+  // Функция для получения изображения через прокси
+  const getProxiedImage = (url) => {
+    if (!url) return null;
+    if (url.includes('cdninstagram.com') || url.includes('instagram.com')) {
+      return `${API}/proxy-image?url=${encodeURIComponent(url)}`;
+    }
+    return url;
+  };
+
   const extractUsername = (input) => {
     let result = input.trim();
     if (result.includes("instagram.com")) {
@@ -122,7 +131,6 @@ export default function Home() {
     img.src = `https://picsum.photos/seed/${id}/300/534`;
   };
 
-  // Получаем информацию о пользователе
   const getUserInfo = (username) => {
     return users.find(u => u.instagram_username === username);
   };
@@ -220,7 +228,15 @@ export default function Home() {
                   <div className="user-header">
                     <div className="user-avatar">
                       {items[0]?.profile_pic ? (
-                        <img src={items[0].profile_pic} alt="" />
+                        <img 
+                          src={getProxiedImage(items[0].profile_pic)} 
+                          alt=""
+                          crossOrigin="anonymous"
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                            e.target.parentElement.textContent = name[0].toUpperCase();
+                          }}
+                        />
                       ) : (
                         name[0].toUpperCase()
                       )}
@@ -254,11 +270,12 @@ export default function Home() {
                       <div key={reel.id} className="reel-card">
                         <div className="reel-thumb">
                           <img
-                            src={reel.thumbnail_url || getPlaceholder(reel.id)}
+                            src={getProxiedImage(reel.thumbnail_url) || getPlaceholder(reel.id)}
                             alt=""
                             data-id={reel.id}
                             onError={handleImageError}
                             loading="lazy"
+                            crossOrigin="anonymous"
                           />
                           <div className="reel-overlay">
                             <span>

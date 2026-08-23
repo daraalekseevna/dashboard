@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
 const { ApifyClient } = require('apify-client');
+const axios = require('axios'); // <-- ДОБАВЬТЕ ЭТУ СТРОКУ
 require('dotenv').config();
 
 const app = express();
@@ -70,6 +71,40 @@ async function initDB() {
 }
 initDB();
 
+// ===== ПРОКСИ ДЛЯ ИЗОБРАЖЕНИЙ =====
+app.get('/api/proxy-image', async (req, res) => {
+  const imageUrl = req.query.url;
+  
+  if (!imageUrl) {
+    return res.status(400).json({ error: 'URL не указан' });
+  }
+  
+  try {
+    const response = await axios({
+      method: 'GET',
+      url: imageUrl,
+      responseType: 'arraybuffer',
+      timeout: 15000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+        'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Referer': 'https://www.instagram.com/',
+        'Origin': 'https://www.instagram.com',
+      }
+    });
+    
+    const contentType = response.headers['content-type'] || 'image/jpeg';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.send(response.data);
+  } catch (error) {
+    console.error('Прокси ошибка:', error.message);
+    res.status(500).json({ error: 'Не удалось загрузить изображение' });
+  }
+});
+
 // Получение всех рилсов
 app.get('/api/reels', async (req, res) => {
   try {
@@ -133,7 +168,6 @@ async function getInstagramPosts(username, limit = 50) {
   let allPosts = [];
   let usedActors = [];
   
-  // Пробуем разные акторы
   const actors = [
     {
       name: 'apify/instagram-post-scraper',
@@ -180,7 +214,7 @@ async function getInstagramPosts(username, limit = 50) {
         allPosts = items;
         usedActors.push(actor.name);
         console.log(`✅ ${actor.name} вернул ${items.length} постов`);
-        break; // Если получили посты, останавливаемся
+        break;
       }
     } catch (err) {
       console.log(`❌ ${actor.name} не сработал:`, err.message);
@@ -190,9 +224,7 @@ async function getInstagramPosts(username, limit = 50) {
   return { posts: allPosts, usedActors };
 }
 
-// Функция для получения видео с правильными обложками
 function extractVideoData(post) {
-  // Пробуем разные варианты полей для обложки
   const thumbnail = 
     post.displayUrl || 
     post.display_url || 
@@ -204,19 +236,15 @@ function extractVideoData(post) {
     post.image_url ||
     (post.carousel_media && post.carousel_media[0]?.image_versions2?.candidates?.[0]?.url) ||
     (post.image_versions2 && post.image_versions2.candidates && post.image_versions2.candidates[0]?.url) ||
-    (post.images && post.images[0]?.url) ||
     '';
 
-  // Пробуем разные варианты для видео
   const videoUrl = 
     post.videoUrl || 
     post.video_url || 
     post.video || 
     (post.video_versions && post.video_versions[0]?.url) ||
-    (post.videos && post.videos[0]?.url) ||
     '';
 
-  // Пробуем разные варианты для описания
   let caption = '';
   if (post.caption) {
     if (typeof post.caption === 'string') caption = post.caption;
@@ -227,7 +255,6 @@ function extractVideoData(post) {
     caption = post.description;
   }
 
-  // Пробуем разные варианты для статистики
   const views = 
     post.videoViews || 
     post.video_play_count || 
@@ -249,7 +276,6 @@ function extractVideoData(post) {
     post.comments || 
     0;
 
-  // Пробуем разные варианты для даты
   let timestamp = new Date();
   if (post.timestamp) {
     timestamp = new Date(post.timestamp);
@@ -263,7 +289,6 @@ function extractVideoData(post) {
     timestamp = new Date(post.created_time * 1000);
   }
 
-  // Проверяем, является ли пост видео
   const isVideo = 
     post.type === 'Video' || 
     post.type === 'video' ||
@@ -276,8 +301,7 @@ function extractVideoData(post) {
     post.is_video === true ||
     (post.media_type === 2) ||
     (post.media_type === 8) ||
-    (post.video_versions && post.video_versions.length > 0) ||
-    (post.videos && post.videos.length > 0);
+    (post.video_versions && post.video_versions.length > 0);
 
   return {
     id: post.id || `post_${Date.now()}`,
@@ -293,7 +317,6 @@ function extractVideoData(post) {
   };
 }
 
-// Функция для генерации mock-данных
 function generateMockReels(username, count = 12) {
   const captions = [
     '🔥 Новый рилс! #instagram #reels',
@@ -340,7 +363,6 @@ app.post('/api/sync/:username', async (req, res) => {
     console.log(`✅ Найден профиль: ${profile.username}, подписчиков: ${profile.followersCount || 0}`);
     console.log(`🔒 Приватный аккаунт: ${isPrivate ? 'ДА' : 'НЕТ'}`);
 
-    // Сохраняем пользователя
     let userResult = await pool.query(
       `SELECT id FROM users WHERE instagram_username = $1`,
       [username]
@@ -387,10 +409,7 @@ app.post('/api/sync/:username', async (req, res) => {
       if (fetchedPosts && fetchedPosts.length > 0) {
         console.log(`📹 Получено ${fetchedPosts.length} постов через ${usedActors.join(', ')}`);
         
-        // Извлекаем данные из каждого поста
         posts = fetchedPosts.map(post => extractVideoData(post));
-        
-        // Фильтруем только видео
         const videoPosts = posts.filter(p => p.isVideo);
         console.log(`🎥 Найдено ${videoPosts.length} видео из ${posts.length} постов`);
         
@@ -410,7 +429,6 @@ app.post('/api/sync/:username', async (req, res) => {
 
     console.log(`📹 Всего постов для сохранения: ${posts.length}`);
 
-    // Удаляем старые рилсы
     await pool.query(`DELETE FROM reels WHERE user_id = $1`, [userId]);
 
     let synced = 0;
