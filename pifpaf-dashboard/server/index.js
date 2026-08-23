@@ -73,7 +73,7 @@ app.post('/api/sync/:username', async (req, res) => {
   try {
     console.log('📡 Получаем профиль через Apify...');
     const profileRun = await apifyClient.actor('apify/instagram-profile-scraper').call({
-      username: username, // ← ИСПРАВЛЕНО!
+      usernames: [username], // ← МАССИВ!
     });
     const { items: profileItems } = await apifyClient.dataset(profileRun.defaultDatasetId).listItems();
     const profile = profileItems[0];
@@ -112,7 +112,7 @@ app.post('/api/sync/:username', async (req, res) => {
 
     console.log('📡 Получаем рилсы через apify/instagram-post-scraper...');
     const reelsRun = await apifyClient.actor('apify/instagram-post-scraper').call({
-      usernames: [username],
+      username: username, // ← СТРОКА!
       resultsLimit: 20,
     });
     const { items: reelsItems } = await apifyClient.dataset(reelsRun.defaultDatasetId).listItems();
