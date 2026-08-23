@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
 const { ApifyClient } = require('apify-client');
-const axios = require('axios'); // <-- ДОБАВЬТЕ ЭТУ СТРОКУ
+const axios = require('axios');
 require('dotenv').config();
 
 const app = express();
@@ -163,88 +163,91 @@ async function checkAccountPrivacy(username) {
   }
 }
 
-// Функция для получения постов с разных акторов
-async function getInstagramPosts(username, limit = 50) {
-  let allPosts = [];
-  let usedActors = [];
+// ===== УЛУЧШЕННАЯ ФУНКЦИЯ ИЗВЛЕЧЕНИЯ ДАННЫХ =====
+function extractVideoData(post) {
+  // ===== 1. ИЗВЛЕКАЕМ ОБЛОЖКУ =====
+  let thumbnail = '';
   
-  const actors = [
-    {
-      name: 'apify/instagram-post-scraper',
-      call: async () => {
-        const run = await apifyClient.actor('apify/instagram-post-scraper').call({
-          usernames: [username],
-          resultsLimit: limit,
-          resultsType: 'posts',
-        });
-        const { items } = await apifyClient.dataset(run.defaultDatasetId).listItems();
-        return items;
-      }
-    },
-    {
-      name: 'apify/instagram-scraper',
-      call: async () => {
-        const run = await apifyClient.actor('apify/instagram-scraper').call({
-          usernames: [username],
-          resultsLimit: limit,
-          maxItems: limit,
-        });
-        const { items } = await apifyClient.dataset(run.defaultDatasetId).listItems();
-        return items;
-      }
-    },
-    {
-      name: 'lukas/instagram-scraper',
-      call: async () => {
-        const run = await apifyClient.actor('lukas/instagram-scraper').call({
-          usernames: [username],
-          resultsLimit: limit,
-        });
-        const { items } = await apifyClient.dataset(run.defaultDatasetId).listItems();
-        return items;
-      }
-    }
+  // Все возможные поля для обложки
+  const thumbnailFields = [
+    post.displayUrl,
+    post.display_url,
+    post.thumbnailUrl,
+    post.thumbnail_url,
+    post.thumbnail,
+    post.cover,
+    post.cover_url,
+    post.imageUrl,
+    post.image_url,
+    post.preview,
+    post.preview_url,
+    post.picture,
+    post.picture_url,
+    post.media_url,
+    post.mediaUrl,
+    post.video_thumbnail,
+    post.videoThumbnail,
+    post.og_image,
+    post.ogImage,
+    post.image,
+    post.img,
+    post.poster,
+    post.poster_url,
+    post.thumbnail_src,
+    post.src,
+    // Для карусели
+    post.carousel_media?.[0]?.image_versions2?.candidates?.[0]?.url,
+    post.carousel_media?.[0]?.images?.standard_resolution?.url,
+    // Для вложенных объектов
+    post.image_versions2?.candidates?.[0]?.url,
+    post.image_versions2?.candidates?.[1]?.url,
+    // Для разных форматов
+    post.images?.[0]?.url,
+    post.images?.standard_resolution?.url,
+    post.images?.low_resolution?.url,
+    post.images?.thumbnail?.url,
+    // Для видео
+    post.video_versions?.[0]?.url,
+    post.video_versions?.[1]?.url,
+    post.video_thumbnail_url,
+    post.video_thumbnail,
+    post.thumbnail_src,
+    post.src,
+    post.url
   ];
 
-  for (const actor of actors) {
-    try {
-      console.log(`🔄 Пробуем ${actor.name}...`);
-      const items = await actor.call();
-      if (items && items.length > 0) {
-        allPosts = items;
-        usedActors.push(actor.name);
-        console.log(`✅ ${actor.name} вернул ${items.length} постов`);
-        break;
-      }
-    } catch (err) {
-      console.log(`❌ ${actor.name} не сработал:`, err.message);
+  // Ищем первый существующий URL
+  for (const field of thumbnailFields) {
+    if (field && typeof field === 'string' && field.startsWith('http')) {
+      thumbnail = field;
+      break;
     }
   }
 
-  return { posts: allPosts, usedActors };
-}
+  // Если не нашли, рекурсивный поиск в объекте
+  if (!thumbnail) {
+    const searchInObject = (obj, depth = 0) => {
+      if (depth > 3 || !obj || typeof obj !== 'object') return null;
+      
+      for (const key of Object.keys(obj)) {
+        const value = obj[key];
+        if (typeof value === 'string' && value.startsWith('http') && 
+            (value.includes('cdninstagram') || value.includes('fbcdn') || 
+             value.includes('instagram') || value.includes('jpg') || value.includes('png'))) {
+          return value;
+        }
+        if (typeof value === 'object' && value !== null) {
+          const result = searchInObject(value, depth + 1);
+          if (result) return result;
+        }
+      }
+      return null;
+    };
+    
+    thumbnail = searchInObject(post) || '';
+  }
 
-function extractVideoData(post) {
-  const thumbnail = 
-    post.displayUrl || 
-    post.display_url || 
-    post.thumbnailUrl || 
-    post.thumbnail_url || 
-    post.thumbnail || 
-    post.cover || 
-    post.imageUrl ||
-    post.image_url ||
-    (post.carousel_media && post.carousel_media[0]?.image_versions2?.candidates?.[0]?.url) ||
-    (post.image_versions2 && post.image_versions2.candidates && post.image_versions2.candidates[0]?.url) ||
-    '';
-
-  const videoUrl = 
-    post.videoUrl || 
-    post.video_url || 
-    post.video || 
-    (post.video_versions && post.video_versions[0]?.url) ||
-    '';
-
+  // ===== 2. ИЗВЛЕКАЕМ ОПИСАНИЕ =====
   let caption = '';
   if (post.caption) {
     if (typeof post.caption === 'string') caption = post.caption;
@@ -253,8 +256,36 @@ function extractVideoData(post) {
     caption = post.text;
   } else if (post.description) {
     caption = post.description;
+  } else if (post.edge_media_to_caption?.edges?.[0]?.node?.text) {
+    caption = post.edge_media_to_caption.edges[0].node.text;
   }
 
+  // ===== 3. ИЗВЛЕКАЕМ ДАТУ =====
+  let timestamp = new Date();
+  if (post.timestamp) {
+    timestamp = new Date(post.timestamp);
+  } else if (post.createdAt) {
+    timestamp = new Date(post.createdAt);
+  } else if (post.takenAtTimestamp) {
+    timestamp = new Date(post.takenAtTimestamp * 1000);
+  } else if (post.date) {
+    timestamp = new Date(post.date);
+  } else if (post.created_time) {
+    timestamp = new Date(post.created_time * 1000);
+  } else if (post.edge_media_to_caption?.edges?.[0]?.node?.created_at) {
+    timestamp = new Date(post.edge_media_to_caption.edges[0].node.created_at * 1000);
+  }
+
+  // ===== 4. ИЗВЛЕКАЕМ ВИДЕО =====
+  const videoUrl = 
+    post.videoUrl || 
+    post.video_url || 
+    post.video || 
+    (post.video_versions && post.video_versions[0]?.url) ||
+    (post.videos && post.videos[0]?.url) ||
+    '';
+
+  // ===== 5. ИЗВЛЕКАЕМ СТАТИСТИКУ =====
   const views = 
     post.videoViews || 
     post.video_play_count || 
@@ -276,19 +307,7 @@ function extractVideoData(post) {
     post.comments || 
     0;
 
-  let timestamp = new Date();
-  if (post.timestamp) {
-    timestamp = new Date(post.timestamp);
-  } else if (post.createdAt) {
-    timestamp = new Date(post.createdAt);
-  } else if (post.takenAtTimestamp) {
-    timestamp = new Date(post.takenAtTimestamp * 1000);
-  } else if (post.date) {
-    timestamp = new Date(post.date);
-  } else if (post.created_time) {
-    timestamp = new Date(post.created_time * 1000);
-  }
-
+  // ===== 6. ПРОВЕРЯЕМ, ЧТО ЭТО ВИДЕО =====
   const isVideo = 
     post.type === 'Video' || 
     post.type === 'video' ||
@@ -301,13 +320,25 @@ function extractVideoData(post) {
     post.is_video === true ||
     (post.media_type === 2) ||
     (post.media_type === 8) ||
-    (post.video_versions && post.video_versions.length > 0);
+    (post.video_versions && post.video_versions.length > 0) ||
+    (post.videos && post.videos.length > 0) ||
+    (post.__typename && post.__typename === 'GraphVideo');
+
+  // Логируем для отладки
+  console.log(`📸 Пост ${post.id || 'unknown'}:`, {
+    hasThumbnail: !!thumbnail,
+    thumbnail: thumbnail ? thumbnail.substring(0, 80) + '...' : '❌',
+    hasCaption: !!caption,
+    caption: caption ? caption.substring(0, 50) + '...' : '❌',
+    date: timestamp.toISOString().split('T')[0],
+    isVideo
+  });
 
   return {
     id: post.id || `post_${Date.now()}`,
     thumbnail,
     videoUrl,
-    caption,
+    caption: caption || 'Без описания',
     views: parseInt(views) || 0,
     likes: parseInt(likes) || 0,
     comments: parseInt(comments) || 0,
@@ -404,24 +435,42 @@ app.post('/api/sync/:username', async (req, res) => {
     } else {
       console.log('🌐 Аккаунт публичный, получаем посты...');
       
-      const { posts: fetchedPosts, usedActors } = await getInstagramPosts(username, 50);
-      
-      if (fetchedPosts && fetchedPosts.length > 0) {
-        console.log(`📹 Получено ${fetchedPosts.length} постов через ${usedActors.join(', ')}`);
+      try {
+        // Пробуем получить посты через instagram-post-scraper
+        console.log('🔄 Пробуем instagram-post-scraper...');
+        const postsRun = await apifyClient.actor('apify/instagram-post-scraper').call({
+          usernames: [username],
+          resultsLimit: 30,
+          resultsType: 'posts',
+        });
         
-        posts = fetchedPosts.map(post => extractVideoData(post));
-        const videoPosts = posts.filter(p => p.isVideo);
-        console.log(`🎥 Найдено ${videoPosts.length} видео из ${posts.length} постов`);
+        const { items } = await apifyClient.dataset(postsRun.defaultDatasetId).listItems();
         
-        if (videoPosts.length === 0) {
-          console.log('⚠️ Видео не найдены, генерируем демо-данные...');
+        if (items && items.length > 0) {
+          console.log(`📹 Получено ${items.length} постов`);
+          
+          // Извлекаем данные из каждого поста
+          const extractedPosts = items.map(post => extractVideoData(post));
+          
+          // Фильтруем только видео
+          const videoPosts = extractedPosts.filter(p => p.isVideo);
+          console.log(`🎥 Найдено ${videoPosts.length} видео из ${extractedPosts.length} постов`);
+          
+          if (videoPosts.length > 0) {
+            posts = videoPosts;
+          } else {
+            console.log('⚠️ Видео не найдены, генерируем демо-данные...');
+            posts = generateMockReels(username, 8);
+            isMockData = true;
+          }
+        } else {
+          console.log('⚠️ Постов не получено, генерируем демо-данные...');
           posts = generateMockReels(username, 8);
           isMockData = true;
-        } else {
-          posts = videoPosts;
         }
-      } else {
-        console.log('⚠️ Постов не получено, генерируем демо-данные...');
+      } catch (err) {
+        console.log('❌ Ошибка получения постов:', err.message);
+        console.log('🔄 Генерируем демо-данные...');
         posts = generateMockReels(username, 8);
         isMockData = true;
       }

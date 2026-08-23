@@ -22,7 +22,7 @@ export default function Home() {
   // Функция для получения изображения через прокси
   const getProxiedImage = (url) => {
     if (!url) return null;
-    if (url.includes('cdninstagram.com') || url.includes('instagram.com')) {
+    if (url.includes('cdninstagram.com') || url.includes('instagram.com') || url.includes('fbcdn.net')) {
       return `${API}/proxy-image?url=${encodeURIComponent(url)}`;
     }
     return url;
@@ -128,7 +128,20 @@ export default function Home() {
   const handleImageError = (e) => {
     const img = e.target;
     const id = img.dataset.id || "default";
-    img.src = `https://picsum.photos/seed/${id}/300/534`;
+    // Проверяем, не пробовали ли уже загрузить без прокси
+    if (img.src && img.src.includes('/proxy-image')) {
+      // Если через прокси не работает, пробуем напрямую
+      try {
+        const url = new URL(img.src);
+        const originalUrl = url.searchParams.get('url');
+        if (originalUrl && !originalUrl.includes('cdninstagram.com')) {
+          img.src = originalUrl;
+          return;
+        }
+      } catch {}
+    }
+    // Иначе ставим заглушку
+    img.src = getPlaceholder(id);
   };
 
   const getUserInfo = (username) => {
@@ -230,11 +243,15 @@ export default function Home() {
                       {items[0]?.profile_pic ? (
                         <img 
                           src={getProxiedImage(items[0].profile_pic)} 
-                          alt=""
+                          alt={name}
                           crossOrigin="anonymous"
                           onError={(e) => {
                             e.target.style.display = 'none';
-                            e.target.parentElement.textContent = name[0].toUpperCase();
+                            const parent = e.target.parentElement;
+                            parent.textContent = name[0].toUpperCase();
+                            parent.style.display = 'flex';
+                            parent.style.alignItems = 'center';
+                            parent.style.justifyContent = 'center';
                           }}
                         />
                       ) : (
@@ -266,39 +283,60 @@ export default function Home() {
                   </div>
 
                   <div className="reels-grid">
-                    {sortedItems.slice(0, 6).map((reel) => (
-                      <div key={reel.id} className="reel-card">
-                        <div className="reel-thumb">
-                          <img
-                            src={getProxiedImage(reel.thumbnail_url) || getPlaceholder(reel.id)}
-                            alt=""
-                            data-id={reel.id}
-                            onError={handleImageError}
-                            loading="lazy"
-                            crossOrigin="anonymous"
-                          />
-                          <div className="reel-overlay">
-                            <span>
-                              <FiEye size={14} /> {formatViews(reel.view_count)}
-                            </span>
-                            <span>
-                              <FiHeart size={14} /> {formatViews(reel.like_count)}
-                            </span>
-                            <span>
-                              <FiMessageCircle size={14} /> {reel.comment_count || 0}
-                            </span>
+                    {sortedItems.slice(0, 6).map((reel) => {
+                      // ===== ОБЛОЖКА =====
+                      let imageUrl;
+                      if (reel.thumbnail_url && reel.thumbnail_url.length > 0) {
+                        imageUrl = getProxiedImage(reel.thumbnail_url);
+                      } else {
+                        imageUrl = getPlaceholder(reel.id);
+                      }
+                      
+                      if (!imageUrl) {
+                        imageUrl = getPlaceholder(reel.id);
+                      }
+
+                      // ===== ОПИСАНИЕ =====
+                      const caption = reel.caption || "Без описания";
+                      
+                      // ===== ДАТА =====
+                      const date = formatDate(reel.timestamp);
+
+                      return (
+                        <div key={reel.id} className="reel-card">
+                          <div className="reel-thumb">
+                            <img
+                              src={imageUrl}
+                              alt={caption}
+                              data-id={reel.id}
+                              onError={handleImageError}
+                              loading="lazy"
+                              crossOrigin="anonymous"
+                            />
+                            <div className="reel-overlay">
+                              <span>
+                                <FiEye size={14} /> {formatViews(reel.view_count)}
+                              </span>
+                              <span>
+                                <FiHeart size={14} /> {formatViews(reel.like_count)}
+                              </span>
+                              <span>
+                                <FiMessageCircle size={14} /> {reel.comment_count || 0}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="reel-info">
+                            <p className="reel-caption">
+                              {caption.slice(0, 60)}
+                              {caption.length > 60 && "..."}
+                            </p>
+                            <p className="reel-meta">
+                              <FiCalendar size={12} /> {date}
+                            </p>
                           </div>
                         </div>
-                        <div className="reel-info">
-                          <p className="reel-caption">
-                            {reel.caption?.slice(0, 60) || "Без описания"}
-                          </p>
-                          <p className="reel-meta">
-                            <FiCalendar size={12} /> {formatDate(reel.timestamp)}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               );

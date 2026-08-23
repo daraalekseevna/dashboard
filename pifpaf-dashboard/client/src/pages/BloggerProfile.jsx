@@ -23,8 +23,7 @@ export default function BloggerProfile() {
   // Функция для получения изображения через прокси
   const getProxiedImage = (url) => {
     if (!url) return null;
-    // Если это Instagram URL, используем прокси
-    if (url.includes('cdninstagram.com') || url.includes('instagram.com')) {
+    if (url.includes('cdninstagram.com') || url.includes('instagram.com') || url.includes('fbcdn.net')) {
       return `${API}/proxy-image?url=${encodeURIComponent(url)}`;
     }
     return url;
@@ -119,7 +118,7 @@ export default function BloggerProfile() {
   const handleImageError = (e) => {
     const img = e.target;
     const id = img.dataset.id || "default";
-    img.src = `https://picsum.photos/seed/${id}/300/534`;
+    img.src = getPlaceholder(id);
   };
 
   const handleAvatarError = (e) => {
@@ -257,15 +256,30 @@ export default function BloggerProfile() {
               {[...reels]
                 .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
                 .map((reel) => {
-                  const hasThumbnail = reel.thumbnail_url && reel.thumbnail_url.length > 0;
-                  const imageUrl = hasThumbnail ? getProxiedImage(reel.thumbnail_url) : getPlaceholder(reel.id);
+                  // ===== ОБЛОЖКА =====
+                  let imageUrl;
+                  if (reel.thumbnail_url && reel.thumbnail_url.length > 0) {
+                    imageUrl = getProxiedImage(reel.thumbnail_url);
+                  } else {
+                    imageUrl = getPlaceholder(reel.id);
+                  }
+                  
+                  if (!imageUrl) {
+                    imageUrl = getPlaceholder(reel.id);
+                  }
+
+                  // ===== ОПИСАНИЕ =====
+                  const caption = reel.caption || "Без описания";
+                  
+                  // ===== ДАТА =====
+                  const date = formatDate(reel.timestamp);
                   
                   return (
                     <div key={reel.id} className="reel-card">
                       <div className="reel-thumb">
                         <img
                           src={imageUrl}
-                          alt={reel.caption || "Видео"}
+                          alt={caption}
                           data-id={reel.id}
                           onError={handleImageError}
                           loading="lazy"
@@ -285,11 +299,11 @@ export default function BloggerProfile() {
                       </div>
                       <div className="reel-info">
                         <p className="reel-caption">
-                          {reel.caption?.slice(0, 80) || "Без описания"}
-                          {reel.caption?.length > 80 && "..."}
+                          {caption.slice(0, 80)}
+                          {caption.length > 80 && "..."}
                         </p>
                         <p className="reel-meta">
-                          <FiCalendar size={12} /> {formatDate(reel.timestamp)}
+                          <FiCalendar size={12} /> {date}
                         </p>
                       </div>
                     </div>
