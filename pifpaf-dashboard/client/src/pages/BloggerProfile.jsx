@@ -5,7 +5,7 @@ import Header from "../components/Header";
 import Footer from "../components/Footer";
 import { 
   FiEye, FiHeart, FiMessageCircle, FiArrowLeft, 
-  FiUser, FiVideo, FiBarChart2, FiCalendar 
+  FiUser, FiVideo, FiBarChart2, FiCalendar, FiLock
 } from "react-icons/fi";
 
 export default function BloggerProfile() {
@@ -14,6 +14,7 @@ export default function BloggerProfile() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState(null);
+  const [isPrivate, setIsPrivate] = useState(false);
 
   const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
@@ -31,7 +32,9 @@ export default function BloggerProfile() {
             username: userReels[0].instagram_username,
             profile_pic: userReels[0].profile_pic,
             followers: userReels[0].followers || 0,
+            is_private: userReels[0].is_private || false,
           });
+          setIsPrivate(userReels[0].is_private || false);
           
           const totalViews = userReels.reduce((sum, r) => sum + (r.view_count || 0), 0);
           const totalLikes = userReels.reduce((sum, r) => sum + (r.like_count || 0), 0);
@@ -39,6 +42,23 @@ export default function BloggerProfile() {
           const avgViews = userReels.length > 0 ? Math.round(totalViews / userReels.length) : 0;
           
           setStats({ totalViews, totalLikes, totalComments, avgViews });
+        } else {
+          // Если рилсов нет, пробуем получить данные пользователя
+          try {
+            const usersRes = await axios.get(API + "/users");
+            const foundUser = usersRes.data.find(u => u.instagram_username === username);
+            if (foundUser) {
+              setUser({
+                username: foundUser.instagram_username,
+                profile_pic: foundUser.profile_pic,
+                followers: foundUser.followers || 0,
+                is_private: foundUser.is_private || false,
+              });
+              setIsPrivate(foundUser.is_private || false);
+            }
+          } catch (e) {
+            console.error(e);
+          }
         }
       } catch (e) {
         console.error(e);
@@ -106,10 +126,17 @@ export default function BloggerProfile() {
               )}
             </div>
             <div className="profile-info">
-              <h1>@{user.username}</h1>
+              <h1>
+                @{user.username}
+                {isPrivate && (
+                  <span className="private-badge">
+                    <FiLock size={14} /> Приватный
+                  </span>
+                )}
+              </h1>
               <div className="profile-stats">
                 <span><FiUser size={14} /> {formatViews(user.followers)} подписчиков</span>
-                <span><FiVideo size={14} /> {reels.length} рилсов</span>
+                <span><FiVideo size={14} /> {reels.length} видео</span>
               </div>
             </div>
           </div>
@@ -147,17 +174,13 @@ export default function BloggerProfile() {
 
           {reels.length === 0 ? (
             <div className="empty-state">
-              <p className="empty-title">😅 Нет рилсов</p>
+              <p className="empty-title">😅 Нет видео</p>
               <p className="empty-sub">У этого блоггера пока нет видео</p>
             </div>
           ) : (
             <div className="reels-grid">
               {[...reels]
-                .sort((a, b) => {
-                  const dateA = new Date(a.timestamp);
-                  const dateB = new Date(b.timestamp);
-                  return dateA - dateB;
-                })
+                .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
                 .map((reel) => (
                   <div key={reel.id} className="reel-card">
                     <div className="reel-thumb">

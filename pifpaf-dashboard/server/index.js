@@ -24,6 +24,14 @@ const apifyClient = new ApifyClient({ token: APIFY_TOKEN });
 
 async function initDB() {
   try {
+    // Проверяем, существует ли колонка is_private
+    const checkColumn = await pool.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name='users' AND column_name='is_private'
+    `);
+    
+    // Создаем таблицу users
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -31,10 +39,18 @@ async function initDB() {
         username VARCHAR(255),
         profile_pic TEXT,
         followers INTEGER DEFAULT 0,
-        is_private BOOLEAN DEFAULT false,
         created_at TIMESTAMP DEFAULT NOW()
       )
     `);
+    
+    // Добавляем колонку is_private если ее нет
+    if (checkColumn.rows.length === 0) {
+      await pool.query(`
+        ALTER TABLE users ADD COLUMN is_private BOOLEAN DEFAULT false
+      `);
+      console.log('✅ Добавлена колонка is_private');
+    }
+    
     await pool.query(`
       CREATE TABLE IF NOT EXISTS reels (
         id SERIAL PRIMARY KEY,
@@ -57,13 +73,40 @@ async function initDB() {
 }
 initDB();
 
+// Получение всех рилсов с данными пользователя
 app.get('/api/reels', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT r.*, u.instagram_username, u.profile_pic, u.followers
+      SELECT 
+        r.*, 
+        u.instagram_username, 
+        u.profile_pic, 
+        u.followers,
+        u.is_private
       FROM reels r 
       JOIN users u ON r.user_id = u.id 
       ORDER BY r.timestamp DESC
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Получение списка всех пользователей
+app.get('/api/users', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        id, 
+        instagram_username, 
+        username, 
+        profile_pic, 
+        followers,
+        is_private,
+        created_at
+      FROM users 
+      ORDER BY created_at DESC
     `);
     res.json(result.rows);
   } catch (err) {
@@ -80,7 +123,6 @@ async function checkAccountPrivacy(username) {
     const { items } = await apifyClient.dataset(run.defaultDatasetId).listItems();
     const profile = items[0];
     
-    // Проверяем, есть ли флаг приватности
     const isPrivate = profile.isPrivate === true || profile.is_private === true;
     return { isPrivate, profile };
   } catch (err) {
@@ -89,48 +131,8 @@ async function checkAccountPrivacy(username) {
   }
 }
 
-// Функция для получения постов с приватного аккаунта
-async function getPrivateAccountPosts(username) {
-  try {
-    console.log('🔒 Используем актор для приватных аккаунтов...');
-    
-    // Используем актор, который требует логин
-    const run = await apifyClient.actor('apify/instagram-post-scraper').call({
-      usernames: [username],
-      resultsLimit: 30,
-      // Для приватных аккаунтов нужно добавить сессию
-      session: {
-        "username": process.env.IG_USERNAME,
-        "password": process.env.IG_PASSWORD
-      }
-    });
-    
-    const { items } = await apifyClient.dataset(run.defaultDatasetId).listItems();
-    return items;
-  } catch (err) {
-    console.error('Ошибка получения постов с приватного аккаунта:', err.message);
-    
-    // Fallback: используем другой подход
-    try {
-      console.log('🔄 Пробуем альтернативный метод...');
-      const run = await apifyClient.actor('lukas/instagram-scraper').call({
-        usernames: [username],
-        resultsLimit: 30,
-        // Добавляем куки для приватных аккаунтов
-        cookies: process.env.IG_COOKIES || ''
-      });
-      
-      const { items } = await apifyClient.dataset(run.defaultDatasetId).listItems();
-      return items;
-    } catch (err2) {
-      console.error('Альтернативный метод тоже не сработал:', err2.message);
-      return [];
-    }
-  }
-}
-
-// Функция для генерации mock-данных (для демонстрации)
-function generateMockReels(username, count = 6) {
+// Функция для генерации mock-данных
+function generateMockReels(username, count = 8) {
   const captions = [
     '🔥 Новый рилс! #instagram #reels',
     '💪 Мотивация на каждый день',
@@ -154,17 +156,17 @@ function generateMockReels(username, count = 6) {
     likesCount: Math.floor(Math.random() * 2000 + 100),
     commentsCount: Math.floor(Math.random() * 200 + 10),
     timestamp: new Date(Date.now() - i * 86400000 - Math.random() * 86400000).toISOString(),
-    videoUrl: `https://www.instagram.com/reel/mock_${i}/`,
-    isMock: true // Флаг, что это mock-данные
+    videoUrl: '',
+    isMock: true
   }));
 }
 
+// Синхронизация пользователя
 app.post('/api/sync/:username', async (req, res) => {
   const { username } = req.params;
   console.log(`🔍 Синхронизация: ${username}`);
 
   try {
-    // 1. Проверяем профиль и приватность
     console.log('📡 Проверяем профиль...');
     const { isPrivate, profile } = await checkAccountPrivacy(username);
 
@@ -182,18 +184,16 @@ app.post('/api/sync/:username', async (req, res) => {
     );
 
     let userId;
+    const profilePic = profile.profilePicUrl || profile.avatar || profile.profile_pic_url || '';
+    const followers = profile.followersCount || profile.followers || 0;
+    const displayName = profile.fullName || profile.username || username;
+
     if (userResult.rows.length === 0) {
       const newUser = await pool.query(
         `INSERT INTO users (instagram_username, username, profile_pic, followers, is_private) 
          VALUES ($1, $2, $3, $4, $5) 
          RETURNING id`,
-        [
-          username,
-          profile.username || username,
-          profile.profilePicUrl || profile.avatar || '',
-          profile.followersCount || profile.followers || 0,
-          isPrivate
-        ]
+        [username, displayName, profilePic, followers, isPrivate]
       );
       userId = newUser.rows[0].id;
     } else {
@@ -205,34 +205,19 @@ app.post('/api/sync/:username', async (req, res) => {
           followers = $3,
           is_private = $4
         WHERE id = $5`,
-        [
-          profile.username || username,
-          profile.profilePicUrl || profile.avatar || '',
-          profile.followersCount || profile.followers || 0,
-          isPrivate,
-          userId
-        ]
+        [displayName, profilePic, followers, isPrivate, userId]
       );
     }
 
     let postsItems = [];
     let isMockData = false;
 
-    // 2. Получаем посты
+    // Получаем посты
     if (isPrivate) {
-      console.log('🔒 Аккаунт приватный, пытаемся получить посты...');
-      
-      // Пробуем получить реальные посты
-      postsItems = await getPrivateAccountPosts(username);
-      
-      // Если не удалось получить посты, используем mock-данные
-      if (postsItems.length === 0) {
-        console.log('⚠️ Не удалось получить посты с приватного аккаунта, генерируем демо-данные...');
-        postsItems = generateMockReels(username, 8);
-        isMockData = true;
-      }
+      console.log('🔒 Аккаунт приватный, генерируем демо-данные...');
+      postsItems = generateMockReels(username, 8);
+      isMockData = true;
     } else {
-      // Для публичных аккаунтов используем обычный скрапер
       console.log('🌐 Аккаунт публичный, получаем посты...');
       
       try {
@@ -244,8 +229,15 @@ app.post('/api/sync/:username', async (req, res) => {
         const { items } = await apifyClient.dataset(postsRun.defaultDatasetId).listItems();
         postsItems = items;
         console.log(`📹 Найдено постов: ${postsItems.length}`);
+        
+        if (postsItems.length === 0) {
+          console.log('⚠️ Постов не найдено, генерируем демо-данные...');
+          postsItems = generateMockReels(username, 6);
+          isMockData = true;
+        }
       } catch (err) {
-        console.log('❌ Не удалось получить посты, используем демо-данные...');
+        console.log('❌ Ошибка получения постов:', err.message);
+        console.log('🔄 Генерируем демо-данные...');
         postsItems = generateMockReels(username, 6);
         isMockData = true;
       }
@@ -255,6 +247,8 @@ app.post('/api/sync/:username', async (req, res) => {
 
     // Фильтруем видео
     const videoPosts = postsItems.filter(post => {
+      if (post.isMock) return true;
+      
       const isVideo = 
         post.type === 'Video' || 
         post.type === 'video' ||
@@ -266,9 +260,10 @@ app.post('/api/sync/:username', async (req, res) => {
         post.isVideo === true ||
         post.is_video === true ||
         (post.media_type === 2) ||
-        (post.media_type === 8);
+        (post.media_type === 8) ||
+        (post.video_versions && post.video_versions.length > 0);
       
-      return isVideo || post.isMock; // Для mock-данных всегда считаем видео
+      return isVideo;
     });
 
     console.log(`🎥 Найдено видео: ${videoPosts.length}`);
@@ -282,6 +277,7 @@ app.post('/api/sync/:username', async (req, res) => {
     for (const post of postsToSave) {
       if (!post.id && !post.isMock) continue;
 
+      // Извлекаем обложку видео
       const thumbnail = 
         post.displayUrl || 
         post.display_url || 
@@ -289,22 +285,31 @@ app.post('/api/sync/:username', async (req, res) => {
         post.thumbnail_url || 
         post.thumbnail || 
         post.cover || 
+        post.imageUrl ||
+        post.image_url ||
+        (post.carousel_media && post.carousel_media[0]?.image_versions2?.candidates?.[0]?.url) ||
         '';
 
+      // Извлекаем видео
       const videoUrl = 
         post.videoUrl || 
         post.video_url || 
         post.video || 
+        (post.video_versions && post.video_versions[0]?.url) ||
         '';
 
+      // Извлекаем описание
       let caption = '';
       if (post.caption) {
         if (typeof post.caption === 'string') caption = post.caption;
         else if (typeof post.caption === 'object' && post.caption.text) caption = post.caption.text;
       } else if (post.text) {
         caption = post.text;
+      } else if (post.description) {
+        caption = post.description;
       }
 
+      // Извлекаем статистику
       const views = 
         post.videoViews || 
         post.video_play_count || 
@@ -326,6 +331,7 @@ app.post('/api/sync/:username', async (req, res) => {
         post.comments || 
         0;
 
+      // Извлекаем дату
       let timestamp = new Date();
       if (post.timestamp) {
         timestamp = new Date(post.timestamp);
@@ -361,8 +367,14 @@ app.post('/api/sync/:username', async (req, res) => {
 
     console.log(`✅ Синхронизировано: ${synced} постов${isMockData ? ' (демо-данные)' : ''}`);
 
+    // Получаем обновленные данные
     const reelsData = await pool.query(
-      `SELECT r.*, u.instagram_username, u.profile_pic, u.followers
+      `SELECT 
+        r.*, 
+        u.instagram_username, 
+        u.profile_pic, 
+        u.followers,
+        u.is_private
        FROM reels r 
        JOIN users u ON r.user_id = u.id 
        WHERE u.instagram_username = $1
@@ -376,9 +388,11 @@ app.post('/api/sync/:username', async (req, res) => {
       isPrivate,
       isMockData,
       user: {
-        username: profile.username,
-        followers: profile.followersCount || 0,
-        profile_pic: profile.profilePicUrl || profile.avatar || ''
+        username: profile.username || username,
+        fullName: profile.fullName || profile.username || username,
+        followers: profile.followersCount || profile.followers || 0,
+        profile_pic: profile.profilePicUrl || profile.avatar || profile.profile_pic_url || '',
+        is_private: isPrivate
       },
       reels: reelsData.rows,
       message: isPrivate ? '⚠️ Аккаунт приватный, показаны демо-данные' : '✅ Данные успешно загружены'
@@ -391,6 +405,7 @@ app.post('/api/sync/:username', async (req, res) => {
   }
 });
 
+// Статистика
 app.get('/api/stats', async (req, res) => {
   try {
     const total = await pool.query('SELECT COUNT(*) FROM reels');
@@ -398,7 +413,7 @@ app.get('/api/stats', async (req, res) => {
     const likes = await pool.query('SELECT SUM(like_count) FROM reels');
     const users = await pool.query('SELECT COUNT(*) FROM users');
     const top = await pool.query(`
-      SELECT r.caption, r.view_count, r.thumbnail_url, u.instagram_username
+      SELECT r.caption, r.view_count, r.thumbnail_url, u.instagram_username, u.profile_pic
       FROM reels r 
       JOIN users u ON r.user_id = u.id 
       ORDER BY r.view_count DESC 
@@ -416,6 +431,7 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
+// Удаление пользователя
 app.delete('/api/user/:username', async (req, res) => {
   const { username } = req.params;
   try {
