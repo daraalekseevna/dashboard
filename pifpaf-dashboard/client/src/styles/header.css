@@ -1,35 +1,70 @@
 /* ===== HEADER ===== */
 .header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
-  background: rgba(255, 255, 255, 0.096);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  padding: 12px 32px;
+  background: #3b5fff00;
+  padding: 16px 0;
   width: 100%;
-  position: fixed;  /* Изменено с sticky на fixed */
+  position: sticky;
   top: 0;
-  left: 0;          /* Добавлено для фиксации слева */
   z-index: 100;
-  border-bottom: 1px solid rgba(209, 209, 209, 0.15);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.021);
-  transition: all var(--transition-fast);
 }
 
-/* Важно: добавить отступ сверху для контента, чтобы он не перекрывался шапкой */
-/* Например, для основного контейнера: */
-.main-content {
-  padding-top: 70px; /* Высота шапки + небольшой запас */
+.header-inner {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  width: 100%;
+  max-width: var(--container-max);
+  padding: 0 24px;
 }
 
 @media (max-width: 640px) {
-  .header {
-    padding: 10px 16px;
+  .header-inner {
+    padding: 0 16px;
   }
-  
-  /* Для мобильной версии отступ можно уменьшить */
-  .main-content {
-    padding-top: 60px;
+}
+
+/* ===== ЛОГОТИП ===== */
+.header-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-logo-svg {
+  width: 32px;
+  height: 32px;
+  color: var(--brand);
+  flex-shrink: 0;
+}
+
+.header-title {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.header-title .pifpaf {
+  font-size: 24px;
+  font-weight: 650;
+  font-style: italic;
+  color: var(--ink-900);
+  letter-spacing: -0.005em;
+}
+
+.header-title .ai {
+  font-size: 24px;
+  font-weight: 660;
+  font-style: normal;
+  color: #3479ff;
+  letter-spacing: -0.010em;
+}
+
+@media (max-width: 640px) {
+  .header-title .pifpaf,
+  .header-title .ai {
+    font-size: 20px;
   }
 }
