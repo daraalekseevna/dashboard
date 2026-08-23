@@ -78,6 +78,10 @@ app.post('/api/sync/:username', async (req, res) => {
     const { items: profileItems } = await apifyClient.dataset(profileRun.defaultDatasetId).listItems();
     const profile = profileItems[0];
 
+    // ===== ЛОГИРУЕМ ПРОФИЛЬ =====
+    console.log('📦 ВСЕ ДАННЫЕ ПРОФИЛЯ:');
+    console.log(JSON.stringify(profile, null, 2));
+
     if (!profile) {
       return res.status(404).json({ error: 'Профиль не найден' });
     }
@@ -95,7 +99,12 @@ app.post('/api/sync/:username', async (req, res) => {
         `INSERT INTO users (instagram_username, username, profile_pic, followers) 
          VALUES ($1, $2, $3, $4) 
          RETURNING id`,
-        [username, profile.username, profile.avatar || '', profile.followers || 0]
+        [
+          username,
+          profile.username || username,
+          profile.avatar || profile.profile_pic_url || '',
+          profile.followers || profile.followerCount || 0
+        ]
       );
       userId = newUser.rows[0].id;
     } else {
@@ -106,16 +115,29 @@ app.post('/api/sync/:username', async (req, res) => {
           profile_pic = $2,
           followers = $3
         WHERE id = $4`,
-        [profile.username, profile.avatar || '', profile.followers || 0, userId]
+        [
+          profile.username || username,
+          profile.avatar || profile.profile_pic_url || '',
+          profile.followers || profile.followerCount || 0,
+          userId
+        ]
       );
     }
 
     console.log('📡 Получаем рилсы через apify/instagram-post-scraper...');
     const reelsRun = await apifyClient.actor('apify/instagram-post-scraper').call({
-      usernames: [username], // ← МАССИВ!
+      usernames: [username],
       resultsLimit: 20,
     });
     const { items: reelsItems } = await apifyClient.dataset(reelsRun.defaultDatasetId).listItems();
+
+    // ===== ЛОГИРУЕМ ПЕРВЫЙ РИЛС =====
+    if (reelsItems && reelsItems.length > 0) {
+      console.log('📦 ВСЕ ДАННЫЕ ПЕРВОГО РИЛСА:');
+      console.log(JSON.stringify(reelsItems[0], null, 2));
+    } else {
+      console.log('⚠️ Рилсы не найдены');
+    }
 
     console.log(`📹 Найдено рилсов: ${reelsItems.length}`);
 
@@ -132,7 +154,8 @@ app.post('/api/sync/:username', async (req, res) => {
       for (const reel of reelsItems) {
         if (!reel.id) continue;
 
-        const thumbnail = reel.display_url || reel.thumbnail_url || '';
+        // ===== ПЫТАЕМСЯ НАЙТИ ОБЛОЖКУ В РАЗНЫХ ПОЛЯХ =====
+        const thumbnail = reel.display_url || reel.thumbnail_url || reel.thumbnail || reel.cover || '';
         const videoUrl = reel.video_url || '';
         
         let caption = '';
@@ -204,7 +227,7 @@ app.post('/api/sync/:username', async (req, res) => {
       user: {
         username: profile.username,
         followers: profile.followers || 0,
-        profile_pic: profile.avatar
+        profile_pic: profile.avatar || profile.profile_pic_url || ''
       },
       reels: reelsData.rows
     });
