@@ -3,70 +3,33 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.096);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   padding: 12px 32px;
   width: 100%;
-  position: sticky;
+  position: fixed;  /* Изменено с sticky на fixed */
   top: 0;
+  left: 0;          /* Добавлено для фиксации слева */
   z-index: 100;
   border-bottom: 1px solid rgba(209, 209, 209, 0.15);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.021);
   transition: all var(--transition-fast);
 }
 
+/* Важно: добавить отступ сверху для контента, чтобы он не перекрывался шапкой */
+/* Например, для основного контейнера: */
+.main-content {
+  padding-top: 70px; /* Высота шапки + небольшой запас */
+}
+
 @media (max-width: 640px) {
   .header {
     padding: 10px 16px;
   }
-}
-
-/* ===== ЛОГОТИП ===== */
-.header-logo {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-shrink: 0;
-}
-
-.header-logo-svg {
-  width: 34px;
-  height: 34px;
-  color: var(--brand);
-  flex-shrink: 0;
-  transition: transform var(--transition-fast);
-}
-
-.header-logo-svg:hover {
-  transform: scale(1.05);
-}
-
-.header-title {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-}
-
-.header-title .pifpaf {
-  font-size: 24px;
-  font-weight: 700;
-  font-style: italic;
-  color: var(--ink-900);
-  letter-spacing: -0.02em;
-}
-
-.header-title .ai {
-  font-size: 24px;
-  font-weight: 700;
-  font-style: normal;
-  color: #3479ff;
-  letter-spacing: -0.02em;
-}
-
-@media (max-width: 640px) {
-  .header-title .pifpaf,
-  .header-title .ai {
-    font-size: 20px;
+  
+  /* Для мобильной версии отступ можно уменьшить */
+  .main-content {
+    padding-top: 60px;
   }
 }

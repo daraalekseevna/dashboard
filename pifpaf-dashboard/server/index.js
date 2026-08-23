@@ -95,7 +95,12 @@ app.post('/api/sync/:username', async (req, res) => {
         `INSERT INTO users (instagram_username, username, profile_pic, followers) 
          VALUES ($1, $2, $3, $4) 
          RETURNING id`,
-        [username, profile.username, profile.avatar || '', profile.followers || 0]
+        [
+          username,
+          profile.username,
+          profile.avatar || profile.profile_pic_url || '',
+          profile.followers || 0
+        ]
       );
       userId = newUser.rows[0].id;
     } else {
@@ -106,7 +111,12 @@ app.post('/api/sync/:username', async (req, res) => {
           profile_pic = $2,
           followers = $3
         WHERE id = $4`,
-        [profile.username, profile.avatar || '', profile.followers || 0, userId]
+        [
+          profile.username,
+          profile.avatar || profile.profile_pic_url || '',
+          profile.followers || 0,
+          userId
+        ]
       );
     }
 
@@ -132,13 +142,9 @@ app.post('/api/sync/:username', async (req, res) => {
       for (const reel of reelsItems) {
         if (!reel.id) continue;
 
-        // ===== ОБЛОЖКА =====
         const thumbnail = reel.display_url || reel.thumbnail_url || '';
-        
-        // ===== ВИДЕО =====
         const videoUrl = reel.video_url || '';
         
-        // ===== ОПИСАНИЕ =====
         let caption = '';
         if (reel.caption) {
           if (typeof reel.caption === 'string') caption = reel.caption;
@@ -153,12 +159,10 @@ app.post('/api/sync/:username', async (req, res) => {
         }
         const captionText = typeof caption === 'string' ? caption.slice(0, 500) : String(caption).slice(0, 500);
 
-        // ===== ПРОСМОТРЫ, ЛАЙКИ, КОММЕНТАРИИ =====
         const views = reel.video_play_count || reel.play_count || reel.view_count || 0;
         const likes = reel.like_count || reel.likes || 0;
         const comments = reel.comment_count || reel.comments || 0;
 
-        // ===== ДАТА =====
         let timestamp = new Date();
         if (reel.taken_at_timestamp) {
           timestamp = new Date(reel.taken_at_timestamp * 1000);
@@ -210,7 +214,7 @@ app.post('/api/sync/:username', async (req, res) => {
       user: {
         username: profile.username,
         followers: profile.followers || 0,
-        profile_pic: profile.avatar
+        profile_pic: profile.avatar || profile.profile_pic_url || ''
       },
       reels: reelsData.rows
     });

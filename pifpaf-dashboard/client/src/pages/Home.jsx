@@ -298,7 +298,13 @@ export default function Home() {
               return (
                 <div key={name} className="user-block">
                   <div className="user-header">
-                    <div className="user-avatar">{name[0].toUpperCase()}</div>
+                    <div className="user-avatar">
+                      {items[0]?.profile_pic ? (
+                        <img src={items[0].profile_pic} alt="" />
+                      ) : (
+                        name[0].toUpperCase()
+                      )}
+                    </div>
                     <span className="user-name">@{name}</span>
                     <span className="user-count">
                       {formatViews(items[0]?.followers || 0)} подписчиков
