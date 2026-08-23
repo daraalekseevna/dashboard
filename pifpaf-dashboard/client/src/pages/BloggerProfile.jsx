@@ -16,6 +16,7 @@ export default function BloggerProfile() {
   const [stats, setStats] = useState(null);
   const [isPrivate, setIsPrivate] = useState(false);
   const [error, setError] = useState(null);
+  const [avatarError, setAvatarError] = useState(false);
 
   const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
@@ -23,6 +24,8 @@ export default function BloggerProfile() {
     const loadData = async () => {
       setLoading(true);
       setError(null);
+      setAvatarError(false);
+      
       try {
         // Получаем все рилсы
         const reelsRes = await axios.get(API + "/reels");
@@ -108,11 +111,22 @@ export default function BloggerProfile() {
     return `https://picsum.photos/seed/${id || "default"}/300/534`;
   };
 
-  // Функция для обработки ошибок загрузки изображений
   const handleImageError = (e) => {
     const img = e.target;
     const id = img.dataset.id || "default";
     img.src = `https://picsum.photos/seed/${id}/300/534`;
+  };
+
+  // Обработчик ошибки загрузки аватара
+  const handleAvatarError = (e) => {
+    setAvatarError(true);
+    e.target.style.display = 'none';
+    // Показываем букву
+    const parent = e.target.parentElement;
+    const span = parent.querySelector('span');
+    if (span) {
+      span.style.display = 'flex';
+    }
   };
 
   if (loading) {
@@ -158,20 +172,20 @@ export default function BloggerProfile() {
 
         {user && (
           <div className="profile-header">
-            <div className="profile-avatar-large">
-              {user.profile_pic ? (
-                <img 
-                  src={user.profile_pic} 
-                  alt={user.username}
-                  onError={(e) => {
-                    e.target.style.display = 'none';
-                    e.target.parentElement.querySelector('span').style.display = 'flex';
-                  }}
-                />
-              ) : null}
-              <span style={{ display: user.profile_pic ? 'none' : 'flex' }}>
-                {user.username?.[0]?.toUpperCase() || '?'}
-              </span>
+            <div className="profile-avatar-wrapper">
+              <div className="profile-avatar-large">
+                {user.profile_pic && !avatarError ? (
+                  <img 
+                    src={user.profile_pic} 
+                    alt={user.username}
+                    onError={handleAvatarError}
+                    loading="lazy"
+                  />
+                ) : null}
+                <span style={{ display: (user.profile_pic && !avatarError) ? 'none' : 'flex' }}>
+                  {user.username?.[0]?.toUpperCase() || '?'}
+                </span>
+              </div>
             </div>
             <div className="profile-info">
               <h1>
@@ -239,7 +253,6 @@ export default function BloggerProfile() {
               {[...reels]
                 .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
                 .map((reel) => {
-                  // Проверяем, есть ли обложка
                   const hasThumbnail = reel.thumbnail_url && reel.thumbnail_url.length > 0;
                   const imageUrl = hasThumbnail ? reel.thumbnail_url : getPlaceholder(reel.id);
                   
