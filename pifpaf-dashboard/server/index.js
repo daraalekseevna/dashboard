@@ -73,7 +73,7 @@ app.post('/api/sync/:username', async (req, res) => {
   try {
     console.log('📡 Получаем профиль через Apify...');
     const profileRun = await apifyClient.actor('apify/instagram-profile-scraper').call({
-      usernames: [username],
+      username: username, // ← ИСПРАВЛЕНО!
     });
     const { items: profileItems } = await apifyClient.dataset(profileRun.defaultDatasetId).listItems();
     const profile = profileItems[0];
@@ -95,12 +95,7 @@ app.post('/api/sync/:username', async (req, res) => {
         `INSERT INTO users (instagram_username, username, profile_pic, followers) 
          VALUES ($1, $2, $3, $4) 
          RETURNING id`,
-        [
-          username,
-          profile.username,
-          profile.avatar || profile.profile_pic_url || '',
-          profile.followers || 0
-        ]
+        [username, profile.username, profile.avatar || '', profile.followers || 0]
       );
       userId = newUser.rows[0].id;
     } else {
@@ -111,12 +106,7 @@ app.post('/api/sync/:username', async (req, res) => {
           profile_pic = $2,
           followers = $3
         WHERE id = $4`,
-        [
-          profile.username,
-          profile.avatar || profile.profile_pic_url || '',
-          profile.followers || 0,
-          userId
-        ]
+        [profile.username, profile.avatar || '', profile.followers || 0, userId]
       );
     }
 
@@ -214,7 +204,7 @@ app.post('/api/sync/:username', async (req, res) => {
       user: {
         username: profile.username,
         followers: profile.followers || 0,
-        profile_pic: profile.avatar || profile.profile_pic_url || ''
+        profile_pic: profile.avatar
       },
       reels: reelsData.rows
     });
