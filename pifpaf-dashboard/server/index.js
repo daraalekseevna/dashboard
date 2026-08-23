@@ -23,35 +23,40 @@ const pool = new Pool({
 const apifyClient = new ApifyClient({ token: APIFY_TOKEN });
 
 async function initDB() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS users (
-      id SERIAL PRIMARY KEY,
-      instagram_username VARCHAR(255) UNIQUE,
-      username VARCHAR(255),
-      profile_pic TEXT,
-      followers INTEGER DEFAULT 0,
-      created_at TIMESTAMP DEFAULT NOW()
-    )
-  `);
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS reels (
-      id SERIAL PRIMARY KEY,
-      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-      instagram_id VARCHAR(255) UNIQUE,
-      media_url TEXT,
-      thumbnail_url TEXT,
-      caption TEXT,
-      view_count INTEGER DEFAULT 0,
-      like_count INTEGER DEFAULT 0,
-      comment_count INTEGER DEFAULT 0,
-      timestamp TIMESTAMP,
-      created_at TIMESTAMP DEFAULT NOW()
-    )
-  `);
-  console.log('✅ База данных готова');
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        instagram_username VARCHAR(255) UNIQUE,
+        username VARCHAR(255),
+        profile_pic TEXT,
+        followers INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS reels (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        instagram_id VARCHAR(255) UNIQUE,
+        media_url TEXT,
+        thumbnail_url TEXT,
+        caption TEXT,
+        view_count INTEGER DEFAULT 0,
+        like_count INTEGER DEFAULT 0,
+        comment_count INTEGER DEFAULT 0,
+        timestamp TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    console.log('✅ База данных готова');
+  } catch (err) {
+    console.error('❌ Ошибка инициализации БД:', err.message);
+  }
 }
 initDB();
 
+// Получение всех рилсов
 app.get('/api/reels', async (req, res) => {
   try {
     const result = await pool.query(`
@@ -66,11 +71,13 @@ app.get('/api/reels', async (req, res) => {
   }
 });
 
+// Синхронизация пользователя
 app.post('/api/sync/:username', async (req, res) => {
   const { username } = req.params;
   console.log(`🔍 Синхронизация: ${username}`);
 
   try {
+    // 1. Получаем профиль
     console.log('📡 Получаем профиль через Apify...');
     const profileRun = await apifyClient.actor('apify/instagram-profile-scraper').call({
       usernames: [username],
@@ -78,16 +85,13 @@ app.post('/api/sync/:username', async (req, res) => {
     const { items: profileItems } = await apifyClient.dataset(profileRun.defaultDatasetId).listItems();
     const profile = profileItems[0];
 
-    // ===== ЛОГИРУЕМ ПРОФИЛЬ =====
-    console.log('📦 ВСЕ ДАННЫЕ ПРОФИЛЯ:');
-    console.log(JSON.stringify(profile, null, 2));
-
     if (!profile) {
       return res.status(404).json({ error: 'Профиль не найден' });
     }
 
-    console.log(`✅ Найден профиль: ${profile.username}, подписчиков: ${profile.followers || 0}`);
+    console.log(`✅ Найден профиль: ${profile.username}, подписчиков: ${profile.followersCount || 0}`);
 
+    // 2. Сохраняем/обновляем пользователя
     let userResult = await pool.query(
       `SELECT id FROM users WHERE instagram_username = $1`,
       [username]
@@ -102,8 +106,8 @@ app.post('/api/sync/:username', async (req, res) => {
         [
           username,
           profile.username || username,
-          profile.avatar || profile.profile_pic_url || '',
-          profile.followers || profile.followerCount || 0
+          profile.profilePicUrl || profile.avatar || '',
+          profile.followersCount || profile.followers || 0
         ]
       );
       userId = newUser.rows[0].id;
@@ -117,101 +121,81 @@ app.post('/api/sync/:username', async (req, res) => {
         WHERE id = $4`,
         [
           profile.username || username,
-          profile.avatar || profile.profile_pic_url || '',
-          profile.followers || profile.followerCount || 0,
+          profile.profilePicUrl || profile.avatar || '',
+          profile.followersCount || profile.followers || 0,
           userId
         ]
       );
     }
 
-    console.log('📡 Получаем рилсы через apify/instagram-post-scraper...');
-    const reelsRun = await apifyClient.actor('apify/instagram-post-scraper').call({
+    // 3. Получаем посты (рилсы)
+    console.log('📡 Получаем посты через apify/instagram-scraper...');
+    const postsRun = await apifyClient.actor('apify/instagram-scraper').call({
       usernames: [username],
-      resultsLimit: 20,
+      resultsLimit: 30,
     });
-    const { items: reelsItems } = await apifyClient.dataset(reelsRun.defaultDatasetId).listItems();
+    const { items: postsItems } = await apifyClient.dataset(postsRun.defaultDatasetId).listItems();
 
-    // ===== ЛОГИРУЕМ ПЕРВЫЙ РИЛС =====
-    if (reelsItems && reelsItems.length > 0) {
-      console.log('📦 ВСЕ ДАННЫЕ ПЕРВОГО РИЛСА:');
-      console.log(JSON.stringify(reelsItems[0], null, 2));
-    } else {
-      console.log('⚠️ Рилсы не найдены');
-    }
+    console.log(`📹 Найдено постов: ${postsItems.length}`);
 
-    console.log(`📹 Найдено рилсов: ${reelsItems.length}`);
+    // Фильтруем только видео
+    const videoPosts = postsItems.filter(post => post.type === 'Video' || post.videoUrl || post.video);
+    
+    console.log(`🎥 Найдено видео: ${videoPosts.length}`);
 
-    reelsItems.sort((a, b) => {
-      const dateA = a.taken_at_timestamp || a.timestamp || a.createdAt || a.date || 0;
-      const dateB = b.taken_at_timestamp || b.timestamp || b.createdAt || b.date || 0;
-      return new Date(dateB) - new Date(dateA);
-    });
-
+    // Удаляем старые рилсы
     await pool.query(`DELETE FROM reels WHERE user_id = $1`, [userId]);
 
     let synced = 0;
-    if (reelsItems && reelsItems.length > 0) {
-      for (const reel of reelsItems) {
-        if (!reel.id) continue;
+    for (const post of videoPosts) {
+      if (!post.id) continue;
 
-        // ===== ПЫТАЕМСЯ НАЙТИ ОБЛОЖКУ В РАЗНЫХ ПОЛЯХ =====
-        const thumbnail = reel.display_url || reel.thumbnail_url || reel.thumbnail || reel.cover || '';
-        const videoUrl = reel.video_url || '';
-        
-        let caption = '';
-        if (reel.caption) {
-          if (typeof reel.caption === 'string') caption = reel.caption;
-          else if (typeof reel.caption === 'object' && reel.caption.text) caption = reel.caption.text;
-          else if (Array.isArray(reel.caption) && reel.caption.length > 0) {
-            caption = reel.caption[0]?.text || '';
-          } else caption = String(reel.caption) || '';
-        } else if (reel.text) {
-          caption = reel.text;
-        } else if (reel.description) {
-          caption = reel.description;
-        }
-        const captionText = typeof caption === 'string' ? caption.slice(0, 500) : String(caption).slice(0, 500);
-
-        const views = reel.video_play_count || reel.play_count || reel.view_count || 0;
-        const likes = reel.like_count || reel.likes || 0;
-        const comments = reel.comment_count || reel.comments || 0;
-
-        let timestamp = new Date();
-        if (reel.taken_at_timestamp) {
-          timestamp = new Date(reel.taken_at_timestamp * 1000);
-        } else if (reel.timestamp) {
-          timestamp = new Date(reel.timestamp);
-        } else if (reel.createdAt) {
-          timestamp = new Date(reel.createdAt);
-        } else if (reel.date) {
-          timestamp = new Date(reel.date);
-        }
-
-        console.log(`📹 Рилс ${synced + 1}: обложка=${thumbnail ? '✅' : '❌'}, дата=${timestamp.toISOString()}`);
-
-        await pool.query(
-          `INSERT INTO reels (
-            user_id, instagram_id, media_url, thumbnail_url, 
-            caption, view_count, like_count, comment_count, timestamp
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-          [
-            userId,
-            reel.id,
-            videoUrl,
-            thumbnail,
-            captionText,
-            views,
-            likes,
-            comments,
-            timestamp
-          ]
-        );
-        synced++;
+      // Извлекаем данные
+      const thumbnail = post.displayUrl || post.thumbnailUrl || post.thumbnail || '';
+      const videoUrl = post.videoUrl || post.video || '';
+      
+      let caption = '';
+      if (post.caption) {
+        if (typeof post.caption === 'string') caption = post.caption;
+        else if (typeof post.caption === 'object' && post.caption.text) caption = post.caption.text;
       }
+
+      const views = post.videoViews || post.videoPlayCount || post.playCount || 0;
+      const likes = post.likesCount || post.likes || 0;
+      const comments = post.commentsCount || post.comments || 0;
+
+      let timestamp = new Date();
+      if (post.timestamp) {
+        timestamp = new Date(post.timestamp);
+      } else if (post.createdAt) {
+        timestamp = new Date(post.createdAt);
+      } else if (post.takenAtTimestamp) {
+        timestamp = new Date(post.takenAtTimestamp * 1000);
+      }
+
+      await pool.query(
+        `INSERT INTO reels (
+          user_id, instagram_id, media_url, thumbnail_url, 
+          caption, view_count, like_count, comment_count, timestamp
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          userId,
+          post.id,
+          videoUrl,
+          thumbnail,
+          caption ? caption.slice(0, 500) : '',
+          parseInt(views) || 0,
+          parseInt(likes) || 0,
+          parseInt(comments) || 0,
+          timestamp
+        ]
+      );
+      synced++;
     }
 
-    console.log(`✅ Синхронизировано: ${synced} рилсов`);
+    console.log(`✅ Синхронизировано: ${synced} видео`);
 
+    // Получаем обновленные данные
     const reelsData = await pool.query(
       `SELECT r.*, u.instagram_username, u.profile_pic, u.followers
        FROM reels r 
@@ -226,8 +210,8 @@ app.post('/api/sync/:username', async (req, res) => {
       synced,
       user: {
         username: profile.username,
-        followers: profile.followers || 0,
-        profile_pic: profile.avatar || profile.profile_pic_url || ''
+        followers: profile.followersCount || 0,
+        profile_pic: profile.profilePicUrl || profile.avatar || ''
       },
       reels: reelsData.rows
     });
@@ -238,6 +222,7 @@ app.post('/api/sync/:username', async (req, res) => {
   }
 });
 
+// Статистика
 app.get('/api/stats', async (req, res) => {
   try {
     const total = await pool.query('SELECT COUNT(*) FROM reels');
@@ -263,6 +248,7 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
+// Удаление пользователя
 app.delete('/api/user/:username', async (req, res) => {
   const { username } = req.params;
   try {
@@ -274,6 +260,7 @@ app.delete('/api/user/:username', async (req, res) => {
   }
 });
 
+// Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
