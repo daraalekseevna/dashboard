@@ -56,7 +56,6 @@ async function initDB() {
 }
 initDB();
 
-// Получение всех рилсов
 app.get('/api/reels', async (req, res) => {
   try {
     const result = await pool.query(`
@@ -71,7 +70,6 @@ app.get('/api/reels', async (req, res) => {
   }
 });
 
-// Синхронизация пользователя
 app.post('/api/sync/:username', async (req, res) => {
   const { username } = req.params;
   console.log(`🔍 Синхронизация: ${username}`);
@@ -91,7 +89,7 @@ app.post('/api/sync/:username', async (req, res) => {
 
     console.log(`✅ Найден профиль: ${profile.username}, подписчиков: ${profile.followersCount || 0}`);
 
-    // 2. Сохраняем/обновляем пользователя
+    // Сохраняем пользователя
     let userResult = await pool.query(
       `SELECT id FROM users WHERE instagram_username = $1`,
       [username]
@@ -128,41 +126,165 @@ app.post('/api/sync/:username', async (req, res) => {
       );
     }
 
-    // 3. Получаем посты (рилсы)
-    console.log('📡 Получаем посты через apify/instagram-scraper...');
-    const postsRun = await apifyClient.actor('apify/instagram-scraper').call({
-      usernames: [username],
-      resultsLimit: 30,
-    });
-    const { items: postsItems } = await apifyClient.dataset(postsRun.defaultDatasetId).listItems();
+    // 2. Получаем посты - ИСПРАВЛЕННАЯ ВЕРСИЯ
+    console.log('📡 Получаем посты через Instagram Scraper...');
+    
+    // Пробуем разные варианты акторов
+    let postsItems = [];
+    let actorUsed = '';
+    
+    try {
+      // Вариант 1: instagram-post-scraper (рекомендуется для постов)
+      console.log('🔄 Пробуем instagram-post-scraper...');
+      const postsRun = await apifyClient.actor('apify/instagram-post-scraper').call({
+        usernames: [username],
+        resultsLimit: 30,
+        resultsType: 'posts', // Явно указываем тип
+      });
+      
+      const { items } = await apifyClient.dataset(postsRun.defaultDatasetId).listItems();
+      postsItems = items;
+      actorUsed = 'instagram-post-scraper';
+      console.log(`📹 Найдено постов через post-scraper: ${postsItems.length}`);
+    } catch (err) {
+      console.log('❌ instagram-post-scraper не сработал, пробуем другой...');
+      
+      try {
+        // Вариант 2: instagram-scraper
+        console.log('🔄 Пробуем instagram-scraper...');
+        const postsRun = await apifyClient.actor('apify/instagram-scraper').call({
+          usernames: [username],
+          resultsLimit: 30,
+          maxItems: 30,
+        });
+        
+        const { items } = await apifyClient.dataset(postsRun.defaultDatasetId).listItems();
+        postsItems = items;
+        actorUsed = 'instagram-scraper';
+        console.log(`📹 Найдено постов через scraper: ${postsItems.length}`);
+      } catch (err2) {
+        console.log('❌ instagram-scraper не сработал, пробуем последний вариант...');
+        
+        try {
+          // Вариант 3: direct-scraper
+          const postsRun = await apifyClient.actor('lukas/instagram-scraper').call({
+            usernames: [username],
+            resultsLimit: 30,
+          });
+          
+          const { items } = await apifyClient.dataset(postsRun.defaultDatasetId).listItems();
+          postsItems = items;
+          actorUsed = 'lukas/instagram-scraper';
+          console.log(`📹 Найдено постов через lukas-scraper: ${postsItems.length}`);
+        } catch (err3) {
+          console.log('❌ Все акторы не сработали');
+        }
+      }
+    }
 
     console.log(`📹 Найдено постов: ${postsItems.length}`);
+    
+    // Логируем первый пост для отладки
+    if (postsItems.length > 0) {
+      console.log('📦 Пример поста:', JSON.stringify(postsItems[0], null, 2));
+    }
 
-    // Фильтруем только видео
-    const videoPosts = postsItems.filter(post => post.type === 'Video' || post.videoUrl || post.video);
+    // Фильтруем видео
+    const videoPosts = postsItems.filter(post => {
+      // Проверяем разные поля, которые могут указывать на видео
+      const isVideo = 
+        post.type === 'Video' || 
+        post.type === 'video' ||
+        post.mediaType === 'Video' ||
+        post.mediaType === 'video' ||
+        post.videoUrl || 
+        post.video || 
+        post.video_url ||
+        post.isVideo === true ||
+        post.is_video === true ||
+        (post.media_type === 2) || // Instagram API: 2 = video
+        (post.media_type === 8) || // Instagram API: 8 = carousel with video
+        (post.video_versions && post.video_versions.length > 0) ||
+        (post.video_play_count !== undefined);
+      
+      return isVideo;
+    });
     
     console.log(`🎥 Найдено видео: ${videoPosts.length}`);
+
+    // Если видео не найдены, но есть посты, пробуем получить их напрямую
+    if (videoPosts.length === 0 && postsItems.length > 0) {
+      console.log('⚠️ Видео не найдены, но есть посты. Проверяем каждый пост...');
+      
+      for (const post of postsItems) {
+        console.log(`📝 Пост ${post.id || 'unknown'}:`, {
+          type: post.type || post.mediaType || post.media_type,
+          hasVideo: !!post.videoUrl || !!post.video || !!post.video_url,
+          isVideo: post.isVideo || post.is_video
+        });
+      }
+    }
 
     // Удаляем старые рилсы
     await pool.query(`DELETE FROM reels WHERE user_id = $1`, [userId]);
 
     let synced = 0;
-    for (const post of videoPosts) {
+    
+    // Если видео не найдены, но есть посты, пробуем сохранить все посты
+    const postsToSave = videoPosts.length > 0 ? videoPosts : postsItems;
+
+    for (const post of postsToSave) {
       if (!post.id) continue;
 
-      // Извлекаем данные
-      const thumbnail = post.displayUrl || post.thumbnailUrl || post.thumbnail || '';
-      const videoUrl = post.videoUrl || post.video || '';
-      
+      // Извлекаем данные из разных полей
+      const thumbnail = 
+        post.displayUrl || 
+        post.display_url || 
+        post.thumbnailUrl || 
+        post.thumbnail_url || 
+        post.thumbnail || 
+        post.cover || 
+        post.imageUrl ||
+        post.image_url ||
+        '';
+
+      const videoUrl = 
+        post.videoUrl || 
+        post.video_url || 
+        post.video || 
+        post.video_versions?.[0]?.url ||
+        '';
+
       let caption = '';
       if (post.caption) {
         if (typeof post.caption === 'string') caption = post.caption;
         else if (typeof post.caption === 'object' && post.caption.text) caption = post.caption.text;
+      } else if (post.text) {
+        caption = post.text;
+      } else if (post.description) {
+        caption = post.description;
       }
 
-      const views = post.videoViews || post.videoPlayCount || post.playCount || 0;
-      const likes = post.likesCount || post.likes || 0;
-      const comments = post.commentsCount || post.comments || 0;
+      const views = 
+        post.videoViews || 
+        post.video_play_count || 
+        post.videoPlayCount || 
+        post.playCount || 
+        post.view_count || 
+        post.views || 
+        0;
+
+      const likes = 
+        post.likesCount || 
+        post.like_count || 
+        post.likes || 
+        0;
+
+      const comments = 
+        post.commentsCount || 
+        post.comment_count || 
+        post.comments || 
+        0;
 
       let timestamp = new Date();
       if (post.timestamp) {
@@ -171,6 +293,8 @@ app.post('/api/sync/:username', async (req, res) => {
         timestamp = new Date(post.createdAt);
       } else if (post.takenAtTimestamp) {
         timestamp = new Date(post.takenAtTimestamp * 1000);
+      } else if (post.date) {
+        timestamp = new Date(post.date);
       }
 
       await pool.query(
@@ -180,7 +304,7 @@ app.post('/api/sync/:username', async (req, res) => {
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
           userId,
-          post.id,
+          post.id || `post_${Date.now()}_${synced}`,
           videoUrl,
           thumbnail,
           caption ? caption.slice(0, 500) : '',
@@ -193,9 +317,8 @@ app.post('/api/sync/:username', async (req, res) => {
       synced++;
     }
 
-    console.log(`✅ Синхронизировано: ${synced} видео`);
+    console.log(`✅ Синхронизировано: ${synced} постов (из них видео: ${videoPosts.length})`);
 
-    // Получаем обновленные данные
     const reelsData = await pool.query(
       `SELECT r.*, u.instagram_username, u.profile_pic, u.followers
        FROM reels r 
@@ -213,16 +336,21 @@ app.post('/api/sync/:username', async (req, res) => {
         followers: profile.followersCount || 0,
         profile_pic: profile.profilePicUrl || profile.avatar || ''
       },
-      reels: reelsData.rows
+      reels: reelsData.rows,
+      debug: {
+        actorUsed,
+        totalPosts: postsItems.length,
+        videoFound: videoPosts.length
+      }
     });
 
   } catch (err) {
     console.error('❌ Ошибка:', err.message);
+    console.error(err.stack);
     res.status(500).json({ error: err.message });
   }
 });
 
-// Статистика
 app.get('/api/stats', async (req, res) => {
   try {
     const total = await pool.query('SELECT COUNT(*) FROM reels');
@@ -248,7 +376,6 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
-// Удаление пользователя
 app.delete('/api/user/:username', async (req, res) => {
   const { username } = req.params;
   try {
@@ -260,7 +387,6 @@ app.delete('/api/user/:username', async (req, res) => {
   }
 });
 
-// Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
