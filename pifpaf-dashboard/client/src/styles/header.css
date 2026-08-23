@@ -3,7 +3,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   padding: 12px 32px;
@@ -11,8 +11,9 @@
   position: sticky;
   top: 0;
   z-index: 100;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.027);
+  border-bottom: 1px solid rgba(209, 209, 209, 0.15);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.021);
+  transition: all var(--transition-fast);
 }
 
 @media (max-width: 640px) {
@@ -68,56 +69,4 @@
   .header-title .ai {
     font-size: 20px;
   }
-}
-
-/* ===== ПРОФИЛЬ СПРАВА ===== */
-.header-profile {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  padding: 8px;
-  border-radius: 50%;
-  transition: all var(--transition-fast);
-  flex-shrink: 0;
-  width: 40px;
-  height: 40px;
-  position: relative;
-}
-
-.header-profile::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background: var(--brand);
-  opacity: 0;
-  transform: scale(0.8);
-  transition: all var(--transition-base);
-}
-
-.header-profile:hover::after {
-  opacity: 0.06;
-  transform: scale(1);
-}
-
-.header-profile:hover {
-  background: rgba(59, 94, 255, 0.06);
-}
-
-.header-profile .profile-icon {
-  width: 26px;
-  height: 26px;
-  color: var(--brand);
-  transition: transform var(--transition-fast);
-  position: relative;
-  z-index: 1;
-}
-
-.header-profile:hover .profile-icon {
-  transform: scale(1.08);
-}
-
-.header-profile:active .profile-icon {
-  transform: scale(0.92);
 }

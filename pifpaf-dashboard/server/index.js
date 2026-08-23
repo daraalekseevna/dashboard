@@ -71,7 +71,6 @@ app.post('/api/sync/:username', async (req, res) => {
   console.log(`🔍 Синхронизация: ${username}`);
 
   try {
-    // ===== 1. ПОЛУЧАЕМ ПРОФИЛЬ =====
     console.log('📡 Получаем профиль через Apify...');
     const profileRun = await apifyClient.actor('apify/instagram-profile-scraper').call({
       usernames: [username],
@@ -111,7 +110,6 @@ app.post('/api/sync/:username', async (req, res) => {
       );
     }
 
-    // ===== 2. ПОЛУЧАЕМ РИЛСЫ ЧЕРЕЗ instagram-post-scraper =====
     console.log('📡 Получаем рилсы через apify/instagram-post-scraper...');
     const reelsRun = await apifyClient.actor('apify/instagram-post-scraper').call({
       usernames: [username],
@@ -121,7 +119,6 @@ app.post('/api/sync/:username', async (req, res) => {
 
     console.log(`📹 Найдено рилсов: ${reelsItems.length}`);
 
-    // Сортируем по дате (новые сверху)
     reelsItems.sort((a, b) => {
       const dateA = a.taken_at_timestamp || a.timestamp || a.createdAt || a.date || 0;
       const dateB = b.taken_at_timestamp || b.timestamp || b.createdAt || b.date || 0;

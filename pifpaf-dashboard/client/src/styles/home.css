@@ -226,11 +226,11 @@
 }
 
 .stat-card {
-  background: rgba(255, 255, 255, 0.178);
-  backdrop-filter: blur(18px);
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-radius: var(--radius-lg);
-  padding: 18px 12px;
+  padding: 20px 16px;
   text-align: center;
   border: 1px solid var(--ink-100);
   box-shadow: var(--shadow-soft);
@@ -241,14 +241,14 @@
 
 @media (min-width: 640px) {
   .stat-card {
-    padding: 20px 16px;
+    padding: 24px 20px;
     border-radius: var(--radius-xl);
   }
 }
 
 @media (min-width: 1024px) {
   .stat-card {
-    padding: 24px 16px;
+    padding: 28px 24px;
   }
 }
 
@@ -259,6 +259,7 @@
   left: 0;
   right: 0;
   height: 3px;
+  background: var(--brand-gradient);
   opacity: 0;
   transition: opacity var(--transition-base);
 }
@@ -273,14 +274,8 @@
   opacity: 1;
 }
 
-.stat-card .stat-icon {
-  color: var(--brand);
-  opacity: 0.7;
-  margin-bottom: 4px;
-}
-
 .stat-card .stat-number {
-  font-size: 24px;
+  font-size: 28px;
   font-weight: 800;
   color: var(--brand);
   display: block;
@@ -289,18 +284,18 @@
 
 @media (min-width: 640px) {
   .stat-card .stat-number {
-    font-size: 28px;
+    font-size: 32px;
   }
 }
 
 @media (min-width: 1024px) {
   .stat-card .stat-number {
-    font-size: 32px;
+    font-size: 36px;
   }
 }
 
 .stat-card .stat-label {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--ink-300);
   display: block;
   margin-top: 4px;
@@ -309,7 +304,7 @@
 
 @media (min-width: 640px) {
   .stat-card .stat-label {
-    font-size: 13px;
+    font-size: 14px;
   }
 }
 
@@ -341,7 +336,7 @@
   font-weight: 500;
   color: var(--white);
   background: var(--brand-gradient);
-  padding: 2px 12px;
+  padding: 2px 14px;
   border-radius: 50px;
   margin-left: 4px;
 }
@@ -435,7 +430,6 @@
   font-size: 11px;
   font-weight: 500;
   opacity: 1;
-  transition: none;
 }
 
 @media (min-width: 640px) {
@@ -580,10 +574,10 @@
   color: var(--ink-300);
   background: rgba(255, 255, 255, 0.7);
   backdrop-filter: blur(8px);
-  padding: 2px 12px;
+  padding: 2px 14px;
   border-radius: 50px;
   font-weight: 500;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 4px;
 }
@@ -741,7 +735,7 @@
 }
 
 /* ============================================================
-   ЛИЧНЫЙ КАБИНЕТ БЛОГГЕРА (ПОЛУПРОЗРАЧНЫЕ ПАНЕЛЬКИ)
+   ЛИЧНЫЙ КАБИНЕТ БЛОГГЕРА
    ============================================================ */
 
 .back-link {
@@ -775,7 +769,7 @@
   align-items: center;
   gap: 28px;
   padding: 32px;
-  background: rgba(255, 255, 255, 0.329);
+  background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-radius: var(--radius-xl);
@@ -807,7 +801,9 @@
   transition: transform var(--transition-fast);
 }
 
-
+.profile-avatar-large:hover {
+  transform: scale(1.04);
+}
 
 .profile-avatar-large img {
   width: 100%;
@@ -864,7 +860,7 @@
 }
 
 .analytics-card {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-radius: var(--radius-lg);
@@ -888,17 +884,8 @@
 }
 
 .analytics-card.highlight-card .analytics-number,
-.analytics-card.highlight-card .analytics-label,
-.analytics-card.highlight-card .analytics-icon {
+.analytics-card.highlight-card .analytics-label {
   color: var(--white);
-}
-
-.analytics-card .analytics-icon {
-  font-size: 22px;
-  display: block;
-  margin-bottom: 4px;
-  color: var(--brand);
-  opacity: 0.8;
 }
 
 .analytics-card .analytics-number {

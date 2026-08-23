@@ -120,22 +120,18 @@ export default function BloggerProfile() {
             <h2><FiBarChart2 size={20} /> Аналитика профиля</h2>
             <div className="analytics-grid">
               <div className="analytics-card">
-                <span className="analytics-icon"><FiEye size={22} /></span>
                 <span className="analytics-number">{formatViews(stats.totalViews)}</span>
                 <span className="analytics-label">Всего просмотров</span>
               </div>
               <div className="analytics-card">
-                <span className="analytics-icon"><FiHeart size={22} /></span>
                 <span className="analytics-number">{formatViews(stats.totalLikes)}</span>
                 <span className="analytics-label">Всего лайков</span>
               </div>
               <div className="analytics-card">
-                <span className="analytics-icon"><FiMessageCircle size={22} /></span>
                 <span className="analytics-number">{formatViews(stats.totalComments)}</span>
                 <span className="analytics-label">Всего комментариев</span>
               </div>
               <div className="analytics-card highlight-card">
-                <span className="analytics-icon"><FiBarChart2 size={22} /></span>
                 <span className="analytics-number">{formatViews(stats.avgViews)}</span>
                 <span className="analytics-label">Средний охват</span>
               </div>

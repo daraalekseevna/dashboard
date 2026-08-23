@@ -4,8 +4,8 @@ import axios from "axios";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
 import { 
-  FiEye, FiHeart, FiMessageCircle, FiUser, 
-  FiVideo, FiPlus, FiCalendar
+  FiEye, FiHeart, FiMessageCircle, 
+  FiPlus, FiCalendar
 } from "react-icons/fi";
 
 export default function Home() {
@@ -250,22 +250,18 @@ export default function Home() {
         {stats && (
           <div className="stats-grid">
             <div className="stat-card">
-              <FiUser size={24} className="stat-icon" />
               <span className="stat-number">{stats.totalUsers}</span>
               <span className="stat-label">Блогеров</span>
             </div>
             <div className="stat-card">
-              <FiVideo size={24} className="stat-icon" />
               <span className="stat-number">{stats.totalReels}</span>
               <span className="stat-label">Всего видео</span>
             </div>
             <div className="stat-card">
-              <FiEye size={24} className="stat-icon" />
               <span className="stat-number">{formatViews(stats.totalViews)}</span>
               <span className="stat-label">Просмотров</span>
             </div>
             <div className="stat-card">
-              <FiHeart size={24} className="stat-icon" />
               <span className="stat-number">{formatViews(stats.totalLikes)}</span>
               <span className="stat-label">Лайков</span>
             </div>
@@ -305,13 +301,13 @@ export default function Home() {
                     <div className="user-avatar">{name[0].toUpperCase()}</div>
                     <span className="user-name">@{name}</span>
                     <span className="user-count">
-                      <FiUser size={12} /> {formatViews(items[0]?.followers || 0)}
+                      {formatViews(items[0]?.followers || 0)} подписчиков
                     </span>
                     <span className="user-count">
-                      <FiVideo size={12} /> {items.length}
+                      {items.length} видео
                     </span>
                     <Link to={`/blogger/${name}`} className="profile-btn">
-                      <FiUser size={14} /> Кабинет
+                      Кабинет
                     </Link>
                     <button className="delete-btn" onClick={() => deleteUser(name)}>✕</button>
                   </div>
