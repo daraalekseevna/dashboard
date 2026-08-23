@@ -163,86 +163,66 @@ async function checkAccountPrivacy(username) {
   }
 }
 
-// ===== ИСПРАВЛЕННАЯ ФУНКЦИЯ ПОЛУЧЕНИЯ ПОСТОВ =====
-async function getInstagramPosts(username, limit = 30) {
-  let allPosts = [];
-  let usedActor = null;
-  
-  // Пробуем разные акторы с правильными параметрами
-  const actors = [
-    // 1. Instagram Post Scraper (правильный формат)
-    {
-      name: 'apify/instagram-post-scraper',
-      call: async () => {
-        const run = await apifyClient.actor('apify/instagram-post-scraper').call({
-          username: username,  // singular, не usernames!
-          resultsLimit: limit,
-        });
-        const { items } = await apifyClient.dataset(run.defaultDatasetId).listItems();
-        return items;
-      }
-    },
-    // 2. Instagram Scraper
-    {
-      name: 'apify/instagram-scraper',
-      call: async () => {
-        const run = await apifyClient.actor('apify/instagram-scraper').call({
-          usernames: [username],
-          resultsLimit: limit,
-        });
-        const { items } = await apifyClient.dataset(run.defaultDatasetId).listItems();
-        return items;
-      }
-    },
-    // 3. Instagram Profile Scraper (тоже может давать посты)
-    {
-      name: 'apify/instagram-profile-scraper',
-      call: async () => {
-        const run = await apifyClient.actor('apify/instagram-profile-scraper').call({
-          usernames: [username],
-          resultsLimit: limit,
-        });
-        const { items } = await apifyClient.dataset(run.defaultDatasetId).listItems();
-        return items;
-      }
-    },
-    // 4. Альтернативный актор
-    {
-      name: 'lukas/instagram-scraper',
-      call: async () => {
-        const run = await apifyClient.actor('lukas/instagram-scraper').call({
-          usernames: [username],
-          resultsLimit: limit,
-        });
-        const { items } = await apifyClient.dataset(run.defaultDatasetId).listItems();
-        return items;
-      }
+// ===== НОВАЯ ФУНКЦИЯ - ИСПОЛЬЗУЕМ ДРУГОЙ АКТОР =====
+async function getInstagramReels(username) {
+  try {
+    // Используем актор, который специально для рилсов
+    console.log('🔄 Пробуем instagram-reels-scraper...');
+    const run = await apifyClient.actor('apify/instagram-reels-scraper').call({
+      username: username,
+      resultsLimit: 30,
+    });
+    
+    const { items } = await apifyClient.dataset(run.defaultDatasetId).listItems();
+    if (items && items.length > 0) {
+      console.log(`✅ instagram-reels-scraper вернул ${items.length} рилсов`);
+      return { posts: items, usedActor: 'instagram-reels-scraper' };
     }
-  ];
-
-  for (const actor of actors) {
-    try {
-      console.log(`🔄 Пробуем ${actor.name}...`);
-      const items = await actor.call();
-      if (items && items.length > 0) {
-        // Проверяем, что это не ошибка
-        if (items[0].error) {
-          console.log(`⚠️ ${actor.name} вернул ошибку:`, items[0].errorDescription || items[0].error);
-          continue;
-        }
-        allPosts = items;
-        usedActor = actor.name;
-        console.log(`✅ ${actor.name} вернул ${items.length} постов`);
-        break;
-      } else {
-        console.log(`⚠️ ${actor.name} вернул 0 постов`);
-      }
-    } catch (err) {
-      console.log(`❌ ${actor.name} не сработал:`, err.message);
-    }
+  } catch (err) {
+    console.log('❌ instagram-reels-scraper не сработал:', err.message);
   }
 
-  return { posts: allPosts, usedActor };
+  try {
+    // Пробуем другой актор - Instagram Scraper с правильными параметрами
+    console.log('🔄 Пробуем instagram-scraper (с username)...');
+    const run = await apifyClient.actor('apify/instagram-scraper').call({
+      username: username,  // пробуем singular
+      resultsLimit: 30,
+    });
+    
+    const { items } = await apifyClient.dataset(run.defaultDatasetId).listItems();
+    if (items && items.length > 0 && !items[0]?.error) {
+      console.log(`✅ instagram-scraper вернул ${items.length} постов`);
+      return { posts: items, usedActor: 'instagram-scraper' };
+    }
+  } catch (err) {
+    console.log('❌ instagram-scraper не сработал:', err.message);
+  }
+
+  try {
+    // Пробуем Instagram Profile Scraper с расширенными настройками
+    console.log('🔄 Пробуем instagram-profile-scraper (с постами)...');
+    const run = await apifyClient.actor('apify/instagram-profile-scraper').call({
+      usernames: [username],
+      resultsLimit: 30,
+      getPosts: true,  // запрашиваем посты
+      getReels: true,  // запрашиваем рилсы
+    });
+    
+    const { items } = await apifyClient.dataset(run.defaultDatasetId).listItems();
+    if (items && items.length > 0) {
+      // Ищем посты внутри профиля
+      const posts = items[0]?.posts || items[0]?.reels || items;
+      if (posts && posts.length > 0) {
+        console.log(`✅ instagram-profile-scraper вернул ${posts.length} постов`);
+        return { posts, usedActor: 'instagram-profile-scraper' };
+      }
+    }
+  } catch (err) {
+    console.log('❌ instagram-profile-scraper не сработал:', err.message);
+  }
+
+  return { posts: [], usedActor: null };
 }
 
 // ===== УЛУЧШЕННАЯ ФУНКЦИЯ ИЗВЛЕЧЕНИЯ ДАННЫХ =====
@@ -250,7 +230,6 @@ function extractVideoData(post) {
   // ===== 1. ИЗВЛЕКАЕМ ОБЛОЖКУ =====
   let thumbnail = '';
   
-  // Все возможные поля для обложки
   const thumbnailFields = [
     post.displayUrl,
     post.display_url,
@@ -269,65 +248,18 @@ function extractVideoData(post) {
     post.mediaUrl,
     post.video_thumbnail,
     post.videoThumbnail,
-    post.og_image,
-    post.ogImage,
-    post.image,
-    post.img,
-    post.poster,
-    post.poster_url,
-    post.thumbnail_src,
-    post.src,
-    post.url,
-    // Для карусели
-    post.carousel_media?.[0]?.image_versions2?.candidates?.[0]?.url,
-    post.carousel_media?.[0]?.images?.standard_resolution?.url,
-    // Для вложенных объектов
     post.image_versions2?.candidates?.[0]?.url,
-    post.image_versions2?.candidates?.[1]?.url,
-    // Для разных форматов
+    post.video_versions?.[0]?.url,
+    post.carousel_media?.[0]?.image_versions2?.candidates?.[0]?.url,
     post.images?.[0]?.url,
     post.images?.standard_resolution?.url,
-    post.images?.low_resolution?.url,
-    post.images?.thumbnail?.url,
-    // Для видео
-    post.video_versions?.[0]?.url,
-    post.video_versions?.[1]?.url,
-    post.video_thumbnail_url,
-    post.video_thumbnail,
-    post.thumbnail_src,
-    post.src,
-    post.url
   ];
 
-  // Ищем первый существующий URL
   for (const field of thumbnailFields) {
     if (field && typeof field === 'string' && field.startsWith('http')) {
       thumbnail = field;
       break;
     }
-  }
-
-  // Если не нашли, рекурсивный поиск в объекте
-  if (!thumbnail) {
-    const searchInObject = (obj, depth = 0) => {
-      if (depth > 3 || !obj || typeof obj !== 'object') return null;
-      
-      for (const key of Object.keys(obj)) {
-        const value = obj[key];
-        if (typeof value === 'string' && value.startsWith('http') && 
-            (value.includes('cdninstagram') || value.includes('fbcdn') || 
-             value.includes('instagram') || value.includes('jpg') || value.includes('png'))) {
-          return value;
-        }
-        if (typeof value === 'object' && value !== null) {
-          const result = searchInObject(value, depth + 1);
-          if (result) return result;
-        }
-      }
-      return null;
-    };
-    
-    thumbnail = searchInObject(post) || '';
   }
 
   // ===== 2. ИЗВЛЕКАЕМ ОПИСАНИЕ =====
@@ -355,8 +287,6 @@ function extractVideoData(post) {
     timestamp = new Date(post.date);
   } else if (post.created_time) {
     timestamp = new Date(post.created_time * 1000);
-  } else if (post.edge_media_to_caption?.edges?.[0]?.node?.created_at) {
-    timestamp = new Date(post.edge_media_to_caption.edges[0].node.created_at * 1000);
   }
 
   // ===== 4. ИЗВЛЕКАЕМ ВИДЕО =====
@@ -364,8 +294,7 @@ function extractVideoData(post) {
     post.videoUrl || 
     post.video_url || 
     post.video || 
-    (post.video_versions && post.video_versions[0]?.url) ||
-    (post.videos && post.videos[0]?.url) ||
+    post.video_versions?.[0]?.url ||
     '';
 
   // ===== 5. ИЗВЛЕКАЕМ СТАТИСТИКУ =====
@@ -410,17 +339,14 @@ function extractVideoData(post) {
     (post.__typename && post.__typename === 'GraphVideo');
 
   // Логируем для отладки
-  console.log(`📸 Пост ${post.id || 'unknown'}:`, {
-    hasThumbnail: !!thumbnail,
-    thumbnail: thumbnail ? thumbnail.substring(0, 80) + '...' : '❌',
-    hasCaption: !!caption,
-    caption: caption ? caption.substring(0, 50) + '...' : '❌',
-    date: timestamp.toISOString().split('T')[0],
-    isVideo,
-    views,
-    likes,
-    comments
-  });
+  if (thumbnail) {
+    console.log(`  🖼️ Обложка: ${thumbnail.substring(0, 60)}...`);
+  }
+  if (caption) {
+    console.log(`  📝 Описание: ${caption.substring(0, 50)}...`);
+  }
+  console.log(`  📅 Дата: ${timestamp.toISOString().split('T')[0]}`);
+  console.log(`  👁️ Просмотры: ${views}, ❤️ Лайки: ${likes}, 💬 Комменты: ${comments}`);
 
   return {
     id: post.id || `post_${Date.now()}`,
@@ -434,34 +360,6 @@ function extractVideoData(post) {
     isVideo,
     isMock: false
   };
-}
-
-function generateMockReels(username, count = 8) {
-  const captions = [
-    '🔥 Новый рилс! #instagram #reels',
-    '💪 Мотивация на каждый день',
-    '🎵 Под этот трек хочется танцевать',
-    '✨ Магия момента',
-    '🏆 Достижения и победы',
-    '🎥 За кулисами съемок',
-    '💫 Вдохновение вокруг нас',
-    '🌟 Свет и тени',
-    '🎶 Музыка в душе',
-    '📸 Момент из жизни'
-  ];
-  
-  return Array.from({ length: count }, (_, i) => ({
-    id: `mock_${Date.now()}_${i}`,
-    thumbnail: `https://picsum.photos/seed/${username}_${i}_reel/300/534`,
-    videoUrl: '',
-    caption: captions[i % captions.length],
-    views: Math.floor(Math.random() * 25000 + 1000),
-    likes: Math.floor(Math.random() * 3000 + 100),
-    comments: Math.floor(Math.random() * 300 + 10),
-    timestamp: new Date(Date.now() - i * 86400000 - Math.random() * 86400000),
-    isVideo: true,
-    isMock: true
-  }));
 }
 
 // Синхронизация
@@ -480,6 +378,7 @@ app.post('/api/sync/:username', async (req, res) => {
     console.log(`✅ Найден профиль: ${profile.username}, подписчиков: ${profile.followersCount || 0}`);
     console.log(`🔒 Приватный аккаунт: ${isPrivate ? 'ДА' : 'НЕТ'}`);
 
+    // Сохраняем пользователя
     let userResult = await pool.query(
       `SELECT id FROM users WHERE instagram_username = $1`,
       [username]
@@ -516,41 +415,55 @@ app.post('/api/sync/:username', async (req, res) => {
     let usedActor = null;
 
     if (isPrivate) {
-      console.log('🔒 Аккаунт приватный, генерируем демо-данные...');
+      console.log('🔒 Аккаунт приватный - используем демо-данные');
       posts = generateMockReels(username, 8);
       isMockData = true;
     } else {
-      console.log('🌐 Аккаунт публичный, получаем посты...');
+      console.log('🌐 Аккаунт публичный, получаем реальные посты...');
       
-      const { posts: fetchedPosts, usedActor: actor } = await getInstagramPosts(username, 30);
+      const result = await getInstagramReels(username);
       
-      if (fetchedPosts && fetchedPosts.length > 0) {
-        usedActor = actor;
-        console.log(`📹 Получено ${fetchedPosts.length} постов через ${actor}`);
+      if (result.posts && result.posts.length > 0) {
+        usedActor = result.usedActor;
+        console.log(`📹 Получено ${result.posts.length} постов через ${usedActor}`);
         
-        // Извлекаем данные из каждого поста
-        const extractedPosts = fetchedPosts.map(post => extractVideoData(post));
+        // Извлекаем данные
+        const extractedPosts = result.posts.map(post => extractVideoData(post));
         
-        // Фильтруем только видео
+        // Фильтруем видео
         const videoPosts = extractedPosts.filter(p => p.isVideo);
         console.log(`🎥 Найдено ${videoPosts.length} видео из ${extractedPosts.length} постов`);
         
         if (videoPosts.length > 0) {
           posts = videoPosts;
         } else {
-          console.log('⚠️ Видео не найдены, генерируем демо-данные...');
-          posts = generateMockReels(username, 8);
-          isMockData = true;
+          console.log('⚠️ Видео не найдены в полученных постах');
+          // Показываем все посты, даже если не видео
+          posts = extractedPosts.slice(0, 10);
         }
       } else {
-        console.log('⚠️ Постов не получено, генерируем демо-данные...');
+        console.log('⚠️ Не удалось получить посты через Apify');
+        console.log('💡 Проверьте:');
+        console.log('   1. Правильно ли указан username?');
+        console.log('   2. Доступен ли аккаунт?');
+        console.log('   3. Работает ли Apify токен?');
+        
+        // Генерируем демо-данные с предупреждением
         posts = generateMockReels(username, 8);
         isMockData = true;
       }
     }
 
+    // Если постов всё равно нет - генерируем демо
+    if (posts.length === 0) {
+      console.log('⚠️ Постов нет, генерируем демо-данные');
+      posts = generateMockReels(username, 8);
+      isMockData = true;
+    }
+
     console.log(`📹 Всего постов для сохранения: ${posts.length}`);
 
+    // Удаляем старые и сохраняем новые
     await pool.query(`DELETE FROM reels WHERE user_id = $1`, [userId]);
 
     let synced = 0;
@@ -577,7 +490,7 @@ app.post('/api/sync/:username', async (req, res) => {
       synced++;
     }
 
-    console.log(`✅ Синхронизировано: ${synced} постов${isMockData ? ' (демо-данные)' : ''}${usedActor ? ` через ${usedActor}` : ''}`);
+    console.log(`✅ Синхронизировано: ${synced} постов${isMockData ? ' (⚠️ демо-данные, так как не удалось получить реальные)' : ` (✅ реальные данные через ${usedActor})`}`);
 
     const reelsData = await pool.query(
       `SELECT 
@@ -607,7 +520,9 @@ app.post('/api/sync/:username', async (req, res) => {
         is_private: isPrivate
       },
       reels: reelsData.rows,
-      message: isPrivate ? '⚠️ Аккаунт приватный, показаны демо-данные' : '✅ Данные успешно загружены'
+      message: isMockData 
+        ? '⚠️ Используются демо-данные (не удалось получить реальные посты)' 
+        : `✅ Данные успешно загружены через ${usedActor}`
     });
 
   } catch (err) {
@@ -616,6 +531,32 @@ app.post('/api/sync/:username', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+function generateMockReels(username, count = 8) {
+  const captions = [
+    '🔥 Новый рилс! #instagram #reels',
+    '💪 Мотивация на каждый день',
+    '🎵 Под этот трек хочется танцевать',
+    '✨ Магия момента',
+    '🏆 Достижения и победы',
+    '🎥 За кулисами съемок',
+    '💫 Вдохновение вокруг нас',
+    '🌟 Свет и тени'
+  ];
+  
+  return Array.from({ length: count }, (_, i) => ({
+    id: `mock_${Date.now()}_${i}`,
+    thumbnail: `https://picsum.photos/seed/${username}_${i}_reel/300/534`,
+    videoUrl: '',
+    caption: captions[i % captions.length],
+    views: Math.floor(Math.random() * 25000 + 1000),
+    likes: Math.floor(Math.random() * 3000 + 100),
+    comments: Math.floor(Math.random() * 300 + 10),
+    timestamp: new Date(Date.now() - i * 86400000 - Math.random() * 86400000),
+    isVideo: true,
+    isMock: true
+  }));
+}
 
 // Статистика
 app.get('/api/stats', async (req, res) => {
