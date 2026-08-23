@@ -1,28 +1,22 @@
 /* ===== HEADER ===== */
 .header {
   display: flex;
-  justify-content: flex-start;
+  justify-content: space-between;
   align-items: center;
-  background: #3b5fff00;
-  padding: 16px 0;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  padding: 12px 32px;
   width: 100%;
   position: sticky;
   top: 0;
   z-index: 100;
-}
-
-.header-inner {
-  display: flex;
-  justify-content: flex-start;
-  align-items: center;
-  width: 100%;
-  max-width: var(--container-max);
-  padding: 0 24px;
+  border-bottom: 1px solid rgba(209, 209, 209, 0.15);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.021);
 }
 
 @media (max-width: 640px) {
-  .header-inner {
-    padding: 0 16px;
+  .header {
+    padding: 10px 16px;
   }
 }
 
@@ -31,13 +25,19 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
 }
 
 .header-logo-svg {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   color: var(--brand);
   flex-shrink: 0;
+  transition: transform var(--transition-fast);
+}
+
+.header-logo-svg:hover {
+  transform: scale(1.05);
 }
 
 .header-title {
@@ -48,18 +48,18 @@
 
 .header-title .pifpaf {
   font-size: 24px;
-  font-weight: 650;
+  font-weight: 700;
   font-style: italic;
   color: var(--ink-900);
-  letter-spacing: -0.005em;
+  letter-spacing: -0.02em;
 }
 
 .header-title .ai {
   font-size: 24px;
-  font-weight: 660;
+  font-weight: 700;
   font-style: normal;
   color: #3479ff;
-  letter-spacing: -0.010em;
+  letter-spacing: -0.02em;
 }
 
 @media (max-width: 640px) {
