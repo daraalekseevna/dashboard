@@ -3,8 +3,7 @@
   --brand: #3b5eff;
   --brand-dark: #2a4ad4;
   --brand-light: #5e7dff;
-  --brand-gradient: linear-gradient(135deg, #3b5eff 0%, #764ba2 100%);
-  --brand-gradient-hover: linear-gradient(135deg, #2a4ad4 0%, #6a3d9a 100%);
+  --brand-hover: #2a4ad4;
   
   --bg-body: #f5f7fb;
   --bg-card: #f8f9fc;
@@ -171,7 +170,7 @@
 .search-btn {
   padding: 12px 28px;
   border-radius: 50px;
-  background: var(--brand-gradient);
+  background: var(--brand);
   color: var(--white);
   font-weight: 600;
   font-size: 14px;
@@ -184,8 +183,6 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  position: relative;
-  overflow: hidden;
 }
 
 @media (min-width: 640px) {
@@ -195,20 +192,8 @@
   }
 }
 
-.search-btn::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: var(--brand-gradient-hover);
-  opacity: 0;
-  transition: opacity var(--transition-fast);
-}
-
-.search-btn:hover:not(:disabled)::after {
-  opacity: 1;
-}
-
 .search-btn:hover:not(:disabled) {
+  background: var(--brand-dark);
   box-shadow: var(--shadow-brand-lg);
   transform: translateY(-2px);
 }
@@ -355,7 +340,7 @@
   font-size: 12px;
   font-weight: 500;
   color: var(--white);
-  background: var(--brand-gradient);
+  background: var(--brand);
   padding: 2px 14px;
   border-radius: 50px;
   margin-left: 4px;
@@ -555,7 +540,7 @@
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: var(--brand-gradient);
+  background: var(--brand);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -618,7 +603,7 @@
 .profile-btn {
   padding: 6px 16px;
   border-radius: 50px;
-  background: var(--brand-gradient);
+  background: var(--brand);
   color: var(--white);
   font-size: 13px;
   font-weight: 600;
@@ -633,6 +618,7 @@
 }
 
 .profile-btn:hover {
+  background: var(--brand-dark);
   transform: translateY(-2px);
   box-shadow: var(--shadow-brand);
 }
@@ -748,7 +734,7 @@
   border-radius: 50%;
   overflow: hidden;
   flex-shrink: 0;
-  background: var(--brand-gradient);
+  background: var(--brand);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -977,7 +963,7 @@
 }
 
 .analytics-card.highlight-card {
-  background: var(--brand-gradient);
+  background: var(--brand);
 }
 
 .analytics-card.highlight-card .analytics-number {
