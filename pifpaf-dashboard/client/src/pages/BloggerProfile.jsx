@@ -15,53 +15,69 @@ export default function BloggerProfile() {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState(null);
   const [isPrivate, setIsPrivate] = useState(false);
+  const [error, setError] = useState(null);
 
   const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
+      setError(null);
       try {
+        // Получаем все рилсы
         const reelsRes = await axios.get(API + "/reels");
         const allReels = reelsRes.data;
+        
+        // Фильтруем по username
         const userReels = allReels.filter(r => r.instagram_username === username);
         setReels(userReels);
         
+        // Получаем данные пользователя
+        let userData = null;
+        
         if (userReels.length > 0) {
-          setUser({
+          userData = {
             username: userReels[0].instagram_username,
             profile_pic: userReels[0].profile_pic,
             followers: userReels[0].followers || 0,
             is_private: userReels[0].is_private || false,
-          });
-          setIsPrivate(userReels[0].is_private || false);
-          
+          };
+        } else {
+          // Если рилсов нет, пробуем получить пользователя из списка
+          try {
+            const usersRes = await axios.get(API + "/users");
+            const foundUser = usersRes.data.find(u => u.instagram_username === username);
+            if (foundUser) {
+              userData = {
+                username: foundUser.instagram_username,
+                profile_pic: foundUser.profile_pic,
+                followers: foundUser.followers || 0,
+                is_private: foundUser.is_private || false,
+              };
+            }
+          } catch (e) {
+            console.error("Ошибка получения пользователей:", e);
+          }
+        }
+        
+        if (userData) {
+          setUser(userData);
+          setIsPrivate(userData.is_private || false);
+        }
+        
+        // Считаем статистику
+        if (userReels.length > 0) {
           const totalViews = userReels.reduce((sum, r) => sum + (r.view_count || 0), 0);
           const totalLikes = userReels.reduce((sum, r) => sum + (r.like_count || 0), 0);
           const totalComments = userReels.reduce((sum, r) => sum + (r.comment_count || 0), 0);
           const avgViews = userReels.length > 0 ? Math.round(totalViews / userReels.length) : 0;
           
           setStats({ totalViews, totalLikes, totalComments, avgViews });
-        } else {
-          // Если рилсов нет, пробуем получить данные пользователя
-          try {
-            const usersRes = await axios.get(API + "/users");
-            const foundUser = usersRes.data.find(u => u.instagram_username === username);
-            if (foundUser) {
-              setUser({
-                username: foundUser.instagram_username,
-                profile_pic: foundUser.profile_pic,
-                followers: foundUser.followers || 0,
-                is_private: foundUser.is_private || false,
-              });
-              setIsPrivate(foundUser.is_private || false);
-            }
-          } catch (e) {
-            console.error(e);
-          }
         }
+        
       } catch (e) {
-        console.error(e);
+        console.error("Ошибка загрузки:", e);
+        setError("Не удалось загрузить данные профиля");
       }
       setLoading(false);
     };
@@ -92,6 +108,13 @@ export default function BloggerProfile() {
     return `https://picsum.photos/seed/${id || "default"}/300/534`;
   };
 
+  // Функция для обработки ошибок загрузки изображений
+  const handleImageError = (e) => {
+    const img = e.target;
+    const id = img.dataset.id || "default";
+    img.src = `https://picsum.photos/seed/${id}/300/534`;
+  };
+
   if (loading) {
     return (
       <div className="home">
@@ -100,6 +123,23 @@ export default function BloggerProfile() {
           <div className="loading-state">
             <div className="spinner" />
             <span>Загрузка профиля...</span>
+          </div>
+        </div>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="home">
+        <Header />
+        <div className="home-container">
+          <div className="error-box">
+            <p>{error}</p>
+            <Link to="/" className="back-link">
+              <FiArrowLeft size={18} /> Вернуться назад
+            </Link>
           </div>
         </div>
         <Footer />
@@ -120,10 +160,18 @@ export default function BloggerProfile() {
           <div className="profile-header">
             <div className="profile-avatar-large">
               {user.profile_pic ? (
-                <img src={user.profile_pic} alt="" />
-              ) : (
-                <span>{user.username?.[0]?.toUpperCase()}</span>
-              )}
+                <img 
+                  src={user.profile_pic} 
+                  alt={user.username}
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                    e.target.parentElement.querySelector('span').style.display = 'flex';
+                  }}
+                />
+              ) : null}
+              <span style={{ display: user.profile_pic ? 'none' : 'flex' }}>
+                {user.username?.[0]?.toUpperCase() || '?'}
+              </span>
             </div>
             <div className="profile-info">
               <h1>
@@ -135,8 +183,12 @@ export default function BloggerProfile() {
                 )}
               </h1>
               <div className="profile-stats">
-                <span><FiUser size={14} /> {formatViews(user.followers)} подписчиков</span>
-                <span><FiVideo size={14} /> {reels.length} видео</span>
+                <span>
+                  <FiUser size={16} /> {formatViews(user.followers)} подписчиков
+                </span>
+                <span>
+                  <FiVideo size={16} /> {reels.length} видео
+                </span>
               </div>
             </div>
           </div>
@@ -176,43 +228,55 @@ export default function BloggerProfile() {
             <div className="empty-state">
               <p className="empty-title">😅 Нет видео</p>
               <p className="empty-sub">У этого блоггера пока нет видео</p>
+              {isPrivate && (
+                <p className="empty-sub" style={{ color: '#ff6b6b' }}>
+                  🔒 Аккаунт приватный, показаны демо-данные
+                </p>
+              )}
             </div>
           ) : (
             <div className="reels-grid">
               {[...reels]
                 .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-                .map((reel) => (
-                  <div key={reel.id} className="reel-card">
-                    <div className="reel-thumb">
-                      <img
-                        src={reel.thumbnail_url || getPlaceholder(reel.id)}
-                        alt=""
-                        onError={(e) => {
-                          e.target.src = getPlaceholder(reel.id);
-                        }}
-                      />
-                      <div className="reel-overlay">
-                        <span>
-                          <FiEye size={13} /> {formatViews(reel.view_count)}
-                        </span>
-                        <span>
-                          <FiHeart size={13} /> {formatViews(reel.like_count)}
-                        </span>
-                        <span>
-                          <FiMessageCircle size={13} /> {reel.comment_count || 0}
-                        </span>
+                .map((reel) => {
+                  // Проверяем, есть ли обложка
+                  const hasThumbnail = reel.thumbnail_url && reel.thumbnail_url.length > 0;
+                  const imageUrl = hasThumbnail ? reel.thumbnail_url : getPlaceholder(reel.id);
+                  
+                  return (
+                    <div key={reel.id} className="reel-card">
+                      <div className="reel-thumb">
+                        <img
+                          src={imageUrl}
+                          alt={reel.caption || "Видео"}
+                          data-id={reel.id}
+                          onError={handleImageError}
+                          loading="lazy"
+                        />
+                        <div className="reel-overlay">
+                          <span>
+                            <FiEye size={14} /> {formatViews(reel.view_count)}
+                          </span>
+                          <span>
+                            <FiHeart size={14} /> {formatViews(reel.like_count)}
+                          </span>
+                          <span>
+                            <FiMessageCircle size={14} /> {reel.comment_count || 0}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="reel-info">
+                        <p className="reel-caption">
+                          {reel.caption?.slice(0, 80) || "Без описания"}
+                          {reel.caption?.length > 80 && "..."}
+                        </p>
+                        <p className="reel-meta">
+                          <FiCalendar size={12} /> {formatDate(reel.timestamp)}
+                        </p>
                       </div>
                     </div>
-                    <div className="reel-info">
-                      <p className="reel-caption">
-                        {reel.caption?.slice(0, 60) || "Без описания"}
-                      </p>
-                      <p className="reel-meta">
-                        <FiCalendar size={12} /> {formatDate(reel.timestamp)}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
             </div>
           )}
         </div>
